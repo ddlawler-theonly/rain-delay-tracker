@@ -1,0 +1,7 @@
+{
+  "appName": "Rain Delay Tracker",
+  "displayName": "Rain Delay",
+  "bundleId": "com.blueworksfieldpro.raindelay",
+  "version": "1.0.0",
+  "store": true
+}

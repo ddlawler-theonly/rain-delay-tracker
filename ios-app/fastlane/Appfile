@@ -1,0 +1,5 @@
+require 'json'
+cfg_path = ['raindelay.config.json', '../raindelay.config.json'].map { |p| File.expand_path(p) }.find { |p| File.exist?(p) }
+cfg = JSON.parse(File.read(cfg_path))
+app_identifier(cfg['bundleId'])          # single source: raindelay.config.json
+team_id(ENV['APPLE_TEAM_ID']) if ENV['APPLE_TEAM_ID']

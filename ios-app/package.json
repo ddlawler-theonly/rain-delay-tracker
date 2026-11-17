@@ -1,0 +1,29 @@
+{
+  "name": "raindelay-ios",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Rain Delay Tracker - native iOS (Capacitor 8) wrapper around the offline web app (App Store build: starts empty)",
+  "scripts": {
+    "build": "node scripts/build-web.mjs",
+    "apply-config": "node scripts/apply-config.mjs",
+    "sync": "npm run build && npx cap sync ios && node scripts/apply-config.mjs",
+    "icons": "node scripts/make-ios-assets.mjs"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.6.2",
+    "@capacitor/local-notifications": "^8.0.0",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor/share": "^8.0.3",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.2",
+    "esbuild": "^0.28.2",
+    "sharp": "^0.35.5"
+  }
+}
