@@ -79,3 +79,9 @@ td.n,th.n{text-align:right}
 .pill.appx{background:#fff3d6;color:#8a5a00;border:1px solid #e9c46a}
 .banner.warn{background:var(--warnbg);color:var(--warn)}
 [hidden]{display:none!important}
+.dows{display:grid;grid-template-columns:repeat(auto-fit,minmax(60px,1fr));gap:6px}
+.dow{min-height:50px;font-weight:700;font-size:16px;background:#fff;color:var(--mute);border:2px solid #bfc4bc}
+.dow.on{background:#0b5cad;border-color:#0b5cad;color:#fff}
+.day.off{background:#f1f1ef;border-left:6px solid #b9bcb6;color:#555}
+.day.off .amt{color:#666}
+.pill.offd{background:#8d9196;color:#fff}

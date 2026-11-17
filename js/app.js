@@ -2,6 +2,8 @@
 import { STATIONS, SEED_DAYS, SEED_JOB, NORMALS, PRESET_JOBS } from './data.js';
 import { CONFIG } from './config.js';
 const N = () => window.RDNative; // native bridge (iOS app only)
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+const DOW = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']];
 
 const VERSION = CONFIG.VERSION;
 const KEY = 'rdt.v1';
@@ -68,6 +70,8 @@ function mergePresets() {
 }
 if (CONFIG.STORE) { if (!S) { S = { version: 1, jobs: [] }; save(); } }
 else { if (!S) seed(); if (mergePresets()) save(); }
+for (const j of S.jobs) { if (!Array.isArray(j.workDays) || !j.workDays.length) j.workDays = [...ALL_DAYS]; }
+save();
 for (const j of S.jobs) { if (j.station && j.stationMi == null && isFinite(j.lat)) { const s = stationById(j.station); if (s) j.stationMi = +miles(j.lat, j.lon, s.lat, s.lon).toFixed(2); } }
 const job = (id) => S.jobs.find((j) => j.id === id);
 
@@ -78,27 +82,35 @@ function analyze(j) {
   const last = j.end && j.end < addDays(today, -1) ? j.end : addDays(today, -1);
   const dates = j.start <= last ? dayRange(j.start, last) : [];
   const rows = [];
-  let prevRain = false;
+  const wd = workSet(j);
+  let pendingFrom = null; // date of the last >= threshold rain not yet followed by a work day
   for (const date of dates) {
     const d = j.days[date] || { missing: true, pending: true };
     const has = d.precip != null && !d.missing;
-    const rain = has && d.precip >= j.threshold - 1e-9;
-    const wetCand = j.wetOut && prevRain && !rain;
+    const off = !wd.has(new Date(date + 'T12:00:00Z').getUTCDay());
+    const over = has && d.precip >= j.threshold - 1e-9; // threshold met, work day or not
+    const rain = over && !off;                            // counted rain day only on work days
+    // Wet-out goes to the NEXT selected work day after any >= threshold rain (work or off day).
+    const wetCand = !off && j.wetOut && !!pendingFrom && !rain;
+    const wetFrom = wetCand ? pendingFrom : null;
     const wetStatus = wetCand ? (d.wetOutStatus || 'pending') : null;
     const counted = rain || (wetCand && wetStatus === 'confirmed');
-    rows.push({ date, d, has, rain, wetCand, wetStatus, counted });
-    prevRain = rain;
+    rows.push({ date, d, has, off, over, rain, wetCand, wetFrom, wetStatus, counted });
+    if (over) pendingFrom = date; else if (!off) pendingFrom = null;
   }
   return rows;
 }
+function workSet(j) { return new Set(Array.isArray(j.workDays) && j.workDays.length ? j.workDays : ALL_DAYS); }
+function workLabel(j) { const w = workSet(j); if (w.size === 7) return 'All days'; if (w.size === 5 && [1, 2, 3, 4, 5].every((x) => w.has(x))) return 'Mon-Fri'; return DOW.filter(([n]) => w.has(n)).map(([, t]) => t).join(' '); }
 function summarize(j, rows) {
-  const s = { days: rows.length, rain: 0, wetConf: 0, wetPend: 0, wetRej: 0, counted: 0, total: 0, missing: 0, rainedOut: 0, partial: 0, months: {} };
+  const s = { days: rows.length, off: 0, offRain: 0, rain: 0, wetConf: 0, wetPend: 0, wetRej: 0, counted: 0, total: 0, missing: 0, rainedOut: 0, partial: 0, months: {} };
   for (const r of rows) {
     const ym = r.date.slice(0, 7);
     const m = (s.months[ym] ||= { ym, total: 0, rain: 0, counted: 0, days: 0, missing: 0 });
     m.days++;
     if (!r.has) { s.missing++; m.missing++; }
     else { s.total += r.d.precip; m.total += r.d.precip; }
+    if (r.off) { s.off++; m.off = (m.off || 0) + 1; if (r.over) s.offRain++; }
     if (r.rain) { s.rain++; m.rain++; }
     if (r.wetCand) { if (r.wetStatus === 'confirmed') s.wetConf++; else if (r.wetStatus === 'rejected') s.wetRej++; else s.wetPend++; }
     if (r.counted) { s.counted++; m.counted++; }
@@ -286,6 +298,9 @@ function viewEdit(j) {
     <div><label for="end">Substantial / final completion</label><input id="end" type="date" value="${esc(v.end)}"></div></div>
     <div class="mute small">Leave dates blank if unknown; weather tracking starts once a start date is entered.</div>
     <label for="threshold">Rain day threshold (inches)</label><input id="threshold" type="number" step="0.01" min="0.01" value="${esc(v.threshold)}">
+    <label>Work days</label>
+    <div class="dows" id="dows">${DOW.map(([n, t]) => `<button type="button" class="dow ${workSet(v).has(n) ? 'on' : ''}" data-dow="${n}" aria-pressed="${workSet(v).has(n)}">${t}</button>`).join('')}</div>
+    <div class="row" style="margin-top:6px"><button type="button" id="dowWk">Mon-Fri</button><button type="button" id="dowAll">All days</button><span class="mute small">Off days stay in the log but never count; wet-out moves to the next work day.</span></div>
     <label style="font-weight:400"><input type="checkbox" id="wetOut" ${v.wetOut ? 'checked' : ''}>Count the next day if it's wet out (flag for confirmation)</label>
     <label for="notes">Job notes</label><textarea id="notes">${esc(v.notes || '')}</textarea>
     <div class="row" style="margin-top:12px"><button class="primary grow" type="submit">${isNew ? 'Add job & load weather' : 'Save'}</button><a class="btn" href="${isNew ? '#/' : '#/job/' + j.id}">Cancel</a></div>
@@ -305,6 +320,10 @@ function viewEdit(j) {
     $('#stmsg').textContent = auto ? `Auto: nearest is ${icao(near[0].id)}, ${near[0].mi.toFixed(2)} mi. Pick another to override.` : 'Station set by you.';
   }
   fillStations();
+  const setDows = (list) => app.querySelectorAll('.dow').forEach((b) => { const on = list.includes(+b.dataset.dow); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+  app.querySelectorAll('.dow').forEach((b) => (b.onclick = () => { b.classList.toggle('on'); b.setAttribute('aria-pressed', b.classList.contains('on')); N()?.tap?.(); }));
+  $('#dowWk').onclick = () => setDows([1, 2, 3, 4, 5]);
+  $('#dowAll').onclick = () => setDows(ALL_DAYS);
   let area = v.area || null, picker = null;
   async function openMap() {
     const box = $('#picker'); box.innerHTML = '<div class="mute small">Loading map…</div>';
@@ -335,7 +354,9 @@ function viewEdit(j) {
     if (start && end && end < start) return alert('Completion date must be on or after the start date.');
     const thr = parseFloat($('#threshold').value); if (!(thr > 0)) return alert('Threshold must be more than 0.');
     const sid = sel.value, s = stationById(sid);
-    const data = { name: $('#name').value.trim(), number: $('#number').value.trim(), address: $('#address').value.trim(), lat, lon, start, end, threshold: thr, wetOut: $('#wetOut').checked,
+    const workDays = [...app.querySelectorAll('.dow.on')].map((b) => +b.dataset.dow).sort();
+    if (!workDays.length) return alert('Pick at least one work day.');
+    const data = { workDays, name: $('#name').value.trim(), number: $('#number').value.trim(), address: $('#address').value.trim(), lat, lon, start, end, threshold: thr, wetOut: $('#wetOut').checked,
       station: sid, stationMi: +miles(lat, lon, s.lat, s.lon).toFixed(2), stationAuto: auto, notes: $('#notes').value, area: area || null };
     const moved = j && (Math.abs(j.lat - lat) > 1e-6 || Math.abs(j.lon - lon) > 1e-6);
     if (locConfirmed || moved) { data.approx = false; data.locNote = ''; }
@@ -352,7 +373,7 @@ function viewJob(j, tab) {
   const filt = sessionStorage.getItem('rdt.filter') || 'flagged';
   const tabs = ['log', 'summary', 'export'].map((t) => `<button class="${t === tab ? 'on' : ''}" data-tab="${t}">${{ log: 'Daily log', summary: 'Summary', export: 'Export' }[t]}</button>`).join('');
   let body = `<div class="card"><div class="mute small">${esc(j.number ? j.number + ' · ' : '')}${esc(j.address)}</div>
-    <div class="mute small">Station ${esc(icao(j.station))} ${esc(stationById(j.station)?.name || '')}, ${j.stationMi?.toFixed(2)} mi${j.stationAuto ? ' (nearest)' : ' (chosen)'} · NTP ${fmtShort(j.start)} → ${fmtShort(j.end)} · ≥ ${j.threshold.toFixed(2)} in${j.wetOut ? ' + wet-out' : ''}</div>
+    <div class="mute small">Station ${esc(icao(j.station))} ${esc(stationById(j.station)?.name || '')}, ${j.stationMi?.toFixed(2)} mi${j.stationAuto ? ' (nearest)' : ' (chosen)'} · NTP ${fmtShort(j.start)} → ${fmtShort(j.end)} · ≥ ${j.threshold.toFixed(2)} in${j.wetOut ? ' + wet-out' : ''} · Work days: ${workLabel(j)}</div>
     <div class="stats"><div class="stat"><b>${s.counted}</b><span>Counted weather days</span></div><div class="stat"><b>${s.rain}</b><span>Days ≥ ${j.threshold.toFixed(2)} in</span></div>
     <div class="stat"><b>${s.wetConf}/${s.wetConf + s.wetPend + s.wetRej}</b><span>Wet-out confirmed</span></div><div class="stat"><b>${s.total.toFixed(2)}″</b><span>Total rain</span></div></div>
     <div class="small">Today (${fmtShort(today)}): ${f ? `<b>${f.pop}% chance of rain</b> <span class="mute">- ${esc(f.periods)} (NWS ${esc(f.office)})</span>` : '<span class="mute">forecast not loaded</span>'}</div>
@@ -361,7 +382,7 @@ function viewJob(j, tab) {
     ${j.start ? `<div class="tabs">${tabs}</div>` : `<div class="card"><div class="banner warn" style="margin:0">Add start date to begin tracking</div><p class="mute small">No weather is fetched for this job until it has an NTP / start date. <a href="#/edit/${j.id}">Edit job</a></p></div>`}`;
   if (!j.start) { /* no log until a start date exists */ }
   else if (tab === 'log') {
-    const show = rows.filter((r) => filt === 'all' || r.rain || r.wetCand || !r.has || r.d.crew || r.d.notes).reverse();
+    const show = rows.filter((r) => filt === 'all' || r.rain || r.over || r.wetCand || !r.has || r.d.crew || r.d.notes).reverse();
     body += `<div class="filters"><button data-f="flagged" class="${filt === 'flagged' ? 'on' : ''}">Flagged days</button><button data-f="all" class="${filt === 'all' ? 'on' : ''}">All ${rows.length} days</button></div>`;
     body += show.length ? show.map((r) => dayCard(j, r)).join('') : '<div class="card mute">No flagged days yet.</div>';
   } else if (tab === 'summary') {
@@ -369,10 +390,12 @@ function viewJob(j, tab) {
     const mrows = Object.values(s.months).map((m) => {
       const mi = +m.ym.slice(5) - 1, n = N?.m[mi];
       const full = new Date(Date.UTC(+m.ym.slice(0, 4), mi + 1, 0)).getUTCDate();
-      return `<tr><td>${monthName(m.ym)}${m.days < full ? ` <span class="mute small">(${m.days} of ${full} d)</span>` : ''}</td><td class="n">${m.total.toFixed(2)}</td><td class="n">${n ? n[0].toFixed(2) : '—'}</td><td class="n">${m.rain}</td><td class="n">${n ? n[1].toFixed(1) : '—'}</td><td class="n">${m.counted}</td><td class="n">${m.missing || ''}</td></tr>`;
+      return `<tr><td>${monthName(m.ym)}${m.days < full ? ` <span class="mute small">(${m.days} of ${full} d)</span>` : ''}</td><td class="n">${m.total.toFixed(2)}</td><td class="n">${n ? n[0].toFixed(2) : '—'}</td><td class="n">${m.rain}</td><td class="n">${n ? n[1].toFixed(1) : '—'}</td><td class="n">${m.counted}</td><td class="n">${m.off || ''}</td><td class="n">${m.missing || ''}</td></tr>`;
     }).join('');
     body += `<div class="card"><h2>Weather days</h2><table><tbody>
       <tr><td>Days logged (NTP → yesterday)</td><td class="n">${s.days}</td></tr>
+      <tr><td>Off days (${esc(workLabel(j))} schedule)</td><td class="n">${s.off}</td></tr>
+      <tr><td>Off days with ≥ ${j.threshold.toFixed(2)} in (not counted)</td><td class="n">${s.offRain}</td></tr>
       <tr><td>Rain days ≥ ${j.threshold.toFixed(2)} in</td><td class="n">${s.rain}</td></tr>
       <tr><td>Wet-out days confirmed</td><td class="n">${s.wetConf}</td></tr>
       <tr><td>Wet-out days to confirm</td><td class="n">${s.wetPend}</td></tr>
@@ -381,7 +404,7 @@ function viewJob(j, tab) {
       <tr><td>Crew rained out / partial (logged)</td><td class="n">${s.rainedOut} / ${s.partial}</td></tr>
       <tr><td>Total rain</td><td class="n">${s.total.toFixed(2)} in</td></tr>
       <tr><td>Missing days (no data)</td><td class="n">${s.missing}</td></tr></tbody></table></div>
-      <div class="card"><h2>By month vs normal</h2><div style="overflow-x:auto"><table><thead><tr><th>Month</th><th class="n">Rain in</th><th class="n">Normal in</th><th class="n">Days ≥ ${j.threshold.toFixed(2)}</th><th class="n">Normal days ≥ 0.50</th><th class="n">Counted</th><th class="n">Missing</th></tr></thead><tbody>${mrows}</tbody></table></div>
+      <div class="card"><h2>By month vs normal</h2><div style="overflow-x:auto"><table><thead><tr><th>Month</th><th class="n">Rain in</th><th class="n">Normal in</th><th class="n">Days ≥ ${j.threshold.toFixed(2)}</th><th class="n">Normal days ≥ 0.50</th><th class="n">Counted</th><th class="n">Off days</th><th class="n">Missing</th></tr></thead><tbody>${mrows}</tbody></table></div>
       <p class="mute small">${N ? `Normals: NCEI 1991-2020 monthly normals, ${esc(N.ncei)} (${esc(icao(j.station))}); normal days count ≥ 0.50 in regardless of your threshold. Partial months are compared to full-month normals.` : 'No embedded NCEI normals for this station.'}</p></div>`;
   } else {
     body += `<div class="card"><h2>Export ${esc(j.name)}</h2><p class="mute small">Weather days list each date with amount, source, station, wet-out status, crew status, and notes.</p>
@@ -403,26 +426,29 @@ function viewJob(j, tab) {
 }
 function dayCard(j, r) {
   const d = r.d;
-  const cls = !r.has ? 'missing' : r.rain ? 'rain' : r.wetCand ? 'wet ' + (r.wetStatus || '') : '';
+  const cls = (r.off ? 'off ' : '') + (!r.has ? 'missing' : r.rain ? 'rain' : r.wetCand ? 'wet ' + (r.wetStatus || '') : '');
   const pills = [];
+  if (r.off) pills.push(`<span class="pill offd">Off day</span>`);
+  if (r.off && r.over) pills.push(`<span class="pill">≥ ${j.threshold.toFixed(2)} on off day - not counted</span>`);
   if (!r.has) pills.push(`<span class="pill miss">MISSING${d.pending ? ' - not fetched yet' : ''}</span>`);
   if (r.rain) pills.push(`<span class="pill rain">RAIN DAY ≥ ${j.threshold.toFixed(2)}</span>`);
   if (r.wetCand) pills.push(r.wetStatus === 'confirmed' ? '<span class="pill rain">WET-OUT CONFIRMED</span>' : r.wetStatus === 'rejected' ? '<span class="pill bad">wet-out rejected</span>' : '<span class="pill wet">POSSIBLE WET-OUT - CONFIRM</span>');
+  if (r.wetCand && r.wetFrom) pills.push(`<span class="mute small">after rain ${fmtShort(r.wetFrom)}</span>`);
   if (d.crew) pills.push(`<span class="pill ${d.crew === 'worked' ? 'ok' : 'bad'}">${CREW[d.crew]}</span>`);
   const crewBtns = Object.entries(CREW).map(([k, t]) => `<button data-act="crew:${k}" data-date="${r.date}" class="${d.crew === k ? 'sel' : ''}">${t}</button>`).join('');
   const wetBtns = r.wetCand ? `<button data-act="wetOutStatus:confirmed" data-date="${r.date}" class="${r.wetStatus === 'confirmed' ? 'sel' : ''}">Wet-out ✓</button><button data-act="wetOutStatus:rejected" data-date="${r.date}" class="${r.wetStatus === 'rejected' ? 'sel' : ''}">Not wet-out ✗</button>` : '';
   const wx = r.has || d.hi != null ? `<span class="mute small">Hi ${d.hi ?? 'M'}° / Lo ${d.lo ?? 'M'}° · gust ${d.gust ?? 'M'} mph</span>` : '';
   return `<div class="day ${cls}"><div class="top"><span class="date">${fmtShort(r.date)}</span><span class="amt">${r.has ? fmtIn(d.precip, d.precipText) + ' in' : 'M'}</span>${pills.join(' ')}</div>
     <div>${wx} <span class="mute small">· ${esc(d.source || 'no data yet')}${d.remarks ? ' · ' + esc(d.remarks) : ''}</span></div>
-    <div class="ctl">${wetBtns}${crewBtns}<input data-note="${r.date}" placeholder="Notes" value="${esc(d.notes || '')}"></div></div>`;
+    <div class="ctl">${wetBtns}${r.off ? '' : crewBtns}<input data-note="${r.date}" placeholder="Notes" value="${esc(d.notes || '')}"></div></div>`;
 }
 
 // ---------- exports ----------
 function exportRows(j) {
   return analyze(j).map((r) => ({
-    Date: r.date, Day: wkday(r.date), 'Rain (in)': r.has ? fmtIn(r.d.precip, r.d.precipText) : 'M', 'Hi F': r.d.hi ?? 'M', 'Lo F': r.d.lo ?? 'M', 'Peak gust mph': r.d.gust ?? 'M',
+    Date: r.date, Day: wkday(r.date), 'Off day': r.off ? 'OFF' : '', 'Rain (in)': r.has ? fmtIn(r.d.precip, r.d.precipText) : 'M', 'Hi F': r.d.hi ?? 'M', 'Lo F': r.d.lo ?? 'M', 'Peak gust mph': r.d.gust ?? 'M',
     [`Rain day >= ${j.threshold.toFixed(2)} in`]: r.rain ? 'YES' : '', 'Wet-out': r.wetCand ? r.wetStatus : '', 'Counted weather day': r.counted ? 'YES' : '',
-    Crew: CREW[r.d.crew] || '', Notes: r.d.notes || '', Station: r.d.station || icao(j.station), Source: r.has || r.d.source ? r.d.source || '' : 'MISSING - not fetched', Remarks: r.d.remarks || (r.has ? '' : 'Missing - no data; not estimated'),
+    Crew: CREW[r.d.crew] || '', Notes: r.d.notes || '', Station: r.d.station || icao(j.station), Source: r.has || r.d.source ? r.d.source || '' : 'MISSING - not fetched', Remarks: [r.off && r.over ? `>= ${j.threshold.toFixed(2)} in on off day (not counted)` : '', r.wetFrom ? 'Wet-out after rain ' + r.wetFrom : '', r.d.remarks || (r.has ? '' : 'Missing - no data; not estimated')].filter(Boolean).join('; '),
   }));
 }
 const fileBase = (j) => (j.number || j.name).replace(/[^\w.-]+/g, '_') + '_rain_log_' + chicagoToday();
@@ -435,7 +461,7 @@ function exportCSV(j) {
 function headerLines(j) {
   const s = summarize(j, analyze(j));
   return [[`${j.name}${j.number ? ' (' + j.number + ')' : ''}`], [j.address], [`Station: ${icao(j.station)} ${stationById(j.station)?.name || ''}, ${j.stationMi?.toFixed(2)} mi from site`],
-    [`NTP ${j.start} - completion ${j.end}; rule: >= ${j.threshold.toFixed(2)} in${j.wetOut ? ' plus next day if wet out (confirmed)' : ''}`],
+    [`NTP ${j.start} - completion ${j.end}; rule: >= ${j.threshold.toFixed(2)} in${j.wetOut ? ' plus next work day if wet out (confirmed)' : ''}; work days: ${workLabel(j)} (off days shown, never counted)`],
     [`Counted weather days: ${s.counted} (rain days ${s.rain}, wet-out confirmed ${s.wetConf}, pending ${s.wetPend}); total rain ${s.total.toFixed(2)} in; missing days ${s.missing}`],
     [`Generated ${nowChicago()} by Rain Delay Tracker. Sources: NWS CLI (official daily climate report) where labeled; otherwise IEM ASOS daily summary (may differ slightly from NWS CLI). Missing days are not estimated.`]];
 }
@@ -443,31 +469,31 @@ function exportXLSX(j) {
   const XLSX = window.XLSX; if (!XLSX) return alert('Excel library not loaded.');
   const rows = exportRows(j), wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(headerLines(j)); XLSX.utils.sheet_add_json(ws, rows, { origin: 'A8' });
-  ws['!cols'] = [12, 6, 9, 6, 6, 9, 12, 11, 10, 11, 30, 8, 30, 30].map((w) => ({ wch: w }));
+  ws['!cols'] = [12, 6, 6, 9, 6, 6, 9, 12, 11, 10, 11, 30, 8, 30, 30].map((w) => ({ wch: w }));
   XLSX.utils.book_append_sheet(wb, ws, 'Daily log');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.filter((r) => r['Counted weather day'] || r['Wet-out'])), 'Weather days');
   const s = summarize(j, analyze(j)), N = NORMALS[j.station];
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.values(s.months).map((m) => { const n = N?.m[+m.ym.slice(5) - 1]; return { Month: m.ym, 'Days logged': m.days, 'Rain (in)': +m.total.toFixed(2), 'Normal (in)': n ? n[0] : '', [`Days >= ${j.threshold}`]: m.rain, 'Normal days >= 0.50': n ? n[1] : '', Counted: m.counted, Missing: m.missing, 'Normals source': N ? 'NCEI 1991-2020 ' + N.ncei : '' }; })), 'Monthly');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.values(s.months).map((m) => { const n = N?.m[+m.ym.slice(5) - 1]; return { Month: m.ym, 'Days logged': m.days, 'Rain (in)': +m.total.toFixed(2), 'Normal (in)': n ? n[0] : '', [`Days >= ${j.threshold}`]: m.rain, 'Normal days >= 0.50': n ? n[1] : '', Counted: m.counted, 'Off days': m.off || 0, Missing: m.missing, 'Normals source': N ? 'NCEI 1991-2020 ' + N.ncei : '' }; })), 'Monthly');
   const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   download(fileBase(j) + '.xlsx', new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
 }
-function weatherDays(j) { return exportRows(j).filter((r) => r['Counted weather day'] || r['Wet-out'] || r.Crew === 'Rained out' || r.Crew === 'Partial' || r['Rain (in)'] === 'M'); }
+function weatherDays(j) { return exportRows(j).filter((r) => r['Counted weather day'] || r['Wet-out'] || (r['Off day'] && /off day/.test(r.Remarks)) || r.Crew === 'Rained out' || r.Crew === 'Partial' || r['Rain (in)'] === 'M'); }
 function exportPDF(j) {
   const J = window.jspdf; if (!J) return alert('PDF library not loaded.');
   const doc = new J.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
   doc.setFontSize(14); doc.text('Weather Day Log - ' + j.name, 36, 36); doc.setFontSize(9);
   headerLines(j).slice(1).forEach((l, i) => doc.text(doc.splitTextToSize(l[0], 720), 36, 54 + i * 12));
   const rows = weatherDays(j);
-  doc.autoTable({ startY: 130, head: [['Date', 'Day', 'Rain in', 'Rain day', 'Wet-out', 'Counted', 'Crew', 'Station', 'Source', 'Notes']],
-    body: rows.map((r) => [r.Date, r.Day, r['Rain (in)'], r[`Rain day >= ${j.threshold.toFixed(2)} in`], r['Wet-out'], r['Counted weather day'], r.Crew, r.Station, r.Source, r.Notes || r.Remarks]),
-    styles: { fontSize: 8, cellPadding: 3 }, headStyles: { fillColor: [11, 46, 79] }, columnStyles: { 8: { cellWidth: 150 }, 9: { cellWidth: 170 } } });
+  doc.autoTable({ startY: 130, head: [['Date', 'Day', 'Off', 'Rain in', 'Rain day', 'Wet-out', 'Counted', 'Crew', 'Station', 'Source', 'Notes']],
+    body: rows.map((r) => [r.Date, r.Day, r['Off day'], r['Rain (in)'], r[`Rain day >= ${j.threshold.toFixed(2)} in`], r['Wet-out'], r['Counted weather day'], r.Crew, r.Station, r.Source, r.Notes || r.Remarks]),
+    styles: { fontSize: 8, cellPadding: 3 }, headStyles: { fillColor: [11, 46, 79] }, columnStyles: { 9: { cellWidth: 140 }, 10: { cellWidth: 170 } } });
   download(fileBase(j) + '.pdf', doc.output('blob'));
 }
 function printView(j) {
   const rows = weatherDays(j);
   $('#print').innerHTML = `<h2>Weather Day Log - ${esc(j.name)}</h2>${headerLines(j).slice(1).map((l) => `<div>${esc(l[0])}</div>`).join('')}
-    <table style="margin-top:10px"><thead><tr><th>Date</th><th>Rain in</th><th>Rain day</th><th>Wet-out</th><th>Counted</th><th>Crew</th><th>Station</th><th>Source</th><th>Notes</th></tr></thead><tbody>
-    ${rows.map((r) => `<tr><td>${r.Day} ${r.Date}</td><td>${esc(r['Rain (in)'])}</td><td>${r[`Rain day >= ${j.threshold.toFixed(2)} in`]}</td><td>${esc(r['Wet-out'])}</td><td>${r['Counted weather day']}</td><td>${esc(r.Crew)}</td><td>${esc(r.Station)}</td><td>${esc(r.Source)}</td><td>${esc(r.Notes || r.Remarks)}</td></tr>`).join('')}</tbody></table>`;
+    <table style="margin-top:10px"><thead><tr><th>Date</th><th>Off</th><th>Rain in</th><th>Rain day</th><th>Wet-out</th><th>Counted</th><th>Crew</th><th>Station</th><th>Source</th><th>Notes</th></tr></thead><tbody>
+    ${rows.map((r) => `<tr><td>${r.Day} ${r.Date}</td><td>${r['Off day']}</td><td>${esc(r['Rain (in)'])}</td><td>${r[`Rain day >= ${j.threshold.toFixed(2)} in`]}</td><td>${esc(r['Wet-out'])}</td><td>${r['Counted weather day']}</td><td>${esc(r.Crew)}</td><td>${esc(r.Station)}</td><td>${esc(r.Source)}</td><td>${esc(r.Notes || r.Remarks)}</td></tr>`).join('')}</tbody></table>`;
   window.print();
 }
 
