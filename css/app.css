@@ -85,3 +85,11 @@ td.n,th.n{text-align:right}
 .day.off{background:#f1f1ef;border-left:6px solid #b9bcb6;color:#555}
 .day.off .amt{color:#666}
 .pill.offd{background:#8d9196;color:#fff}
+.listpick{flex:1;min-width:0;position:relative}
+.listbtn{width:100%;justify-content:space-between;font-size:18px;font-weight:700;min-height:46px;background:rgba(255,255,255,.08);color:#fff;border:2px solid rgba(255,255,255,.45);border-radius:10px;padding:6px 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.listbtn .cnt{background:rgba(255,255,255,.2);border-radius:999px;padding:1px 8px;font-size:14px;margin-left:auto;margin-right:6px}
+.listmenu{position:absolute;left:0;top:calc(100% + 6px);min-width:260px;width:max-content;max-width:92vw;background:#fff;color:#14181c;border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.25);padding:6px;z-index:40}
+.listmenu .lmi{display:flex;width:100%;justify-content:space-between;border:0;border-radius:8px;min-height:50px;font-size:17px;padding:8px 12px;background:#fff;color:#14181c;text-align:left}
+.listmenu .lmi.on{background:#e3efff;font-weight:700}
+.listmenu .lmi .cnt{color:var(--mute);font-weight:400;margin-left:18px}
+.listmenu hr{border:0;border-top:1px solid var(--line);margin:4px 0}

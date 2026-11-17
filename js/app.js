@@ -70,8 +70,34 @@ function mergePresets() {
 }
 if (CONFIG.STORE) { if (!S) { S = { version: 1, jobs: [] }; save(); } }
 else { if (!S) seed(); if (mergePresets()) save(); }
-for (const j of S.jobs) { if (!Array.isArray(j.workDays) || !j.workDays.length) j.workDays = [...ALL_DAYS]; }
+// ---------- project lists ----------
+function migrate() {
+  for (const j of S.jobs) { if (!Array.isArray(j.workDays) || !j.workDays.length) j.workDays = [...ALL_DAYS]; }
+  if (!Array.isArray(S.lists) || !S.lists.length) {
+    S.lists = CONFIG.STORE ? [{ id: 'default', name: 'My Jobs' }] : [{ id: 'houston', name: 'Houston' }, { id: 'alabama', name: 'Alabama' }];
+    S.defaultList = S.lists[0].id;
+  }
+  if (!S.lists.some((l) => l.id === S.defaultList)) S.defaultList = S.lists[0].id;
+  for (const j of S.jobs) if (!S.lists.some((l) => l.id === j.listId)) j.listId = S.defaultList;
+  if (S.activeList !== 'all' && !S.lists.some((l) => l.id === S.activeList)) S.activeList = S.defaultList;
+}
+migrate();
 save();
+const listName = (id) => (id === 'all' ? 'All jobs' : S.lists.find((l) => l.id === id)?.name || '?');
+const jobsInView = () => (S.activeList === 'all' ? S.jobs : S.jobs.filter((j) => j.listId === S.activeList));
+function newList(name) {
+  name = (name || '').trim(); if (!name) return null;
+  const ex = S.lists.find((l) => l.name.toLowerCase() === name.toLowerCase()); if (ex) return ex.id;
+  const id = 'l' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  S.lists.push({ id, name }); return id;
+}
+function listSelectHtml() {
+  const cnt = S.activeList === 'all' ? S.jobs.length : S.jobs.filter((j) => j.listId === S.activeList).length;
+  const item = (id, name, n) => `<button type="button" role="menuitemradio" aria-checked="${S.activeList === id}" class="lmi ${S.activeList === id ? 'on' : ''}" data-list="${id}"><span>${S.activeList === id ? '✓ ' : ''}${esc(name)}</span><span class="cnt">${n}</span></button>`;
+  return `<div class="listpick"><button type="button" id="listBtn" class="listbtn" aria-haspopup="menu" aria-expanded="false">${esc(listName(S.activeList))} <span class="cnt">${cnt}</span> ▾</button>
+    <div id="listMenu" class="listmenu" role="menu" hidden>${S.lists.map((l) => item(l.id, l.name, S.jobs.filter((j) => j.listId === l.id).length)).join('')}${item('all', 'All jobs', S.jobs.length)}
+    <hr><button type="button" class="lmi" data-list="__new">＋ New list…</button><button type="button" class="lmi" data-list="__manage">Manage lists…</button></div></div>`;
+}
 for (const j of S.jobs) { if (j.station && j.stationMi == null && isFinite(j.lat)) { const s = stationById(j.station); if (s) j.stationMi = +miles(j.lat, j.lon, s.lat, s.lon).toFixed(2); } }
 const job = (id) => S.jobs.find((j) => j.id === id);
 
@@ -234,24 +260,73 @@ async function geocode(addr) {
 
 // ---------- views ----------
 const app = document.getElementById('app');
-function shell(title, body, back) {
-  app.innerHTML = `<header class="top">${back ? `<a href="${back}" aria-label="Back" style="font-size:22px;text-decoration:none">‹</a>` : ''}<h1>${esc(title)}</h1>
+function shell(title, body, back, listPicker) {
+  app.innerHTML = `<header class="top">${back ? `<a href="${back}" aria-label="Back" style="font-size:22px;text-decoration:none">‹</a>` : ''}${listPicker ? listSelectHtml() : `<h1>${esc(title)}</h1>`}
     <button class="ghost" id="btnRefresh" title="Fetch missing days">↻ Refresh</button></header><main>${statusHtml()}${body}</main><div id="print"></div>`;
   $('#btnRefresh').onclick = () => refreshAll(false);
+  const lb = $('#listBtn'), lm = $('#listMenu');
+  if (lb) lb.onclick = (e) => { e.stopPropagation(); lm.hidden = !lm.hidden; lb.setAttribute('aria-expanded', !lm.hidden); };
+  document.onclick = lm ? (e) => { if (!lm.hidden && !lm.contains(e.target)) { lm.hidden = true; lb.setAttribute('aria-expanded', false); } } : null;
+  if (lm) lm.querySelectorAll('[data-list]').forEach((b) => (b.onclick = () => pickList(b.dataset.list)));
+  function pickList(v) {
+    if (v === '__new') { const id = newList(prompt('Name for the new list (e.g. Midland, Completed):')); if (id) { S.activeList = id; save(); toast('List created'); } render(); return; }
+    if (v === '__manage') { location.hash = '#/lists'; return; }
+    S.activeList = v; save(); render();
+  }
 }
 function render() {
   const h = location.hash || '#/';
   const m = h.match(/^#\/(job|edit)\/([^/]+)(?:\/(\w+))?/);
   if (h === '#/new') return viewEdit(null);
+  if (h === '#/lists') return viewLists();
   if (m && m[1] === 'edit') return viewEdit(job(m[2]));
   if (m && m[1] === 'job' && job(m[2])) return viewJob(job(m[2]), m[3] || 'log');
   return viewHome();
 }
 window.addEventListener('hashchange', render);
 
+function viewLists() {
+  const rows = S.lists.map((l) => { const n = S.jobs.filter((j) => j.listId === l.id).length; const def = l.id === S.defaultList;
+    return `<div class="card"><label for="ln_${l.id}">List name${def ? ' (default list)' : ''}</label><div class="row"><input id="ln_${l.id}" class="grow" value="${esc(l.name)}" style="flex:1;min-width:150px"><button data-ren="${l.id}">Rename</button></div>
+      <div class="row" style="margin-top:8px"><span class="mute small grow">${n} job(s)</span>${def ? '<span class="mute small">The default list can be renamed but not deleted.</span>' : `<button class="danger" data-del="${l.id}">Delete list</button>`}</div></div>`; }).join('');
+  shell('Manage lists', `${rows}<div class="card"><label for="nl">New list</label><div class="row"><input id="nl" placeholder="e.g. Completed" style="flex:1;min-width:150px"><button class="primary" id="addl">Add list</button></div></div>
+    <p class="mute small">Deleting a list never deletes jobs: they move to the default list (${esc(listName(S.defaultList))}).</p>`, '#/');
+  app.querySelectorAll('[data-ren]').forEach((b) => (b.onclick = () => { const l = S.lists.find((x) => x.id === b.dataset.ren); const v = $('#ln_' + l.id).value.trim(); if (!v) return alert('Enter a name.'); l.name = v; save(); toast('Renamed'); render(); }));
+  app.querySelectorAll('[data-del]').forEach((b) => (b.onclick = () => {
+    const l = S.lists.find((x) => x.id === b.dataset.del), n = S.jobs.filter((j) => j.listId === l.id).length;
+    if (!confirm(`Delete the list "${l.name}"?${n ? ` Its ${n} job(s) will move to "${listName(S.defaultList)}". No jobs are deleted.` : ''}`)) return;
+    for (const j of S.jobs) if (j.listId === l.id) j.listId = S.defaultList;
+    S.lists = S.lists.filter((x) => x.id !== l.id); if (S.activeList === l.id) S.activeList = S.defaultList; save(); toast('List deleted'); render();
+  }));
+  $('#addl').onclick = () => { const id = newList($('#nl').value); if (id) { save(); toast('List added'); render(); } };
+}
+function exportListCSV() {
+  const jobs = jobsInView().filter((j) => j.start); if (!jobs.length) return alert('No jobs with a start date in this list.');
+  const rows = jobs.flatMap((j) => exportRows(j).map((r) => ({ Job: j.name, 'Job number': j.number || '', List: listName(j.listId), ...r })));
+  const cols = [...new Set(rows.flatMap((r) => Object.keys(r)))];
+  const q = (v) => { v = String(v ?? ''); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  download(`${listName(S.activeList).replace(/[^\w.-]+/g, '_')}_rain_logs_${chicagoToday()}.csv`, new Blob([[cols.join(','), ...rows.map((r) => cols.map((c) => q(r[c])).join(','))].join('\r\n')], { type: 'text/csv' }));
+}
+function exportListXLSX() {
+  const XLSX = window.XLSX; if (!XLSX) return alert('Excel library not loaded.');
+  const jobs = jobsInView().filter((j) => j.start); if (!jobs.length) return alert('No jobs with a start date in this list.');
+  const wb = XLSX.utils.book_new(), used = new Set();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(jobsInView().map((j) => { const s = summarize(j, analyze(j)); return { Job: j.name, 'Job number': j.number || '', List: listName(j.listId), Station: icao(j.station), 'NTP / start': j.start || '', Completion: j.end || '', 'Work days': workLabel(j), 'Counted weather days': j.start ? s.counted : '', 'Rain days': j.start ? s.rain : '', 'Wet-out confirmed': j.start ? s.wetConf : '', 'Wet-out to confirm': j.start ? s.wetPend : '', 'Total rain (in)': j.start ? +s.total.toFixed(2) : '', 'Missing days': j.start ? s.missing : '' }; })), 'Summary');
+  for (const j of jobs) { let n = (j.number || j.name).replace(/[\\/?*\[\]:]/g, ' ').slice(0, 28); while (used.has(n)) n = n.slice(0, 25) + '_' + used.size; used.add(n);
+    const ws = XLSX.utils.aoa_to_sheet(headerLines(j)); XLSX.utils.sheet_add_json(ws, exportRows(j), { origin: 'A8' }); XLSX.utils.book_append_sheet(wb, ws, n); }
+  const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  download(`${listName(S.activeList).replace(/[^\w.-]+/g, '_')}_rain_logs_${chicagoToday()}.xlsx`, new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+}
 function viewHome() {
   const today = chicagoToday();
-  const list = S.jobs.map((j) => {
+  const inView = jobsInView();
+  const sums = inView.filter((j) => j.start).map((j) => summarize(j, analyze(j)));
+  const tot = sums.reduce((a, s) => ({ counted: a.counted + s.counted, pend: a.pend + s.wetPend, rain: a.rain + s.total }), { counted: 0, pend: 0, rain: 0 });
+  const listCard = `<div class="card"><div class="row"><h2 class="grow" style="margin:0">${esc(listName(S.activeList))}</h2><span class="mute small">${inView.length} job(s)</span></div>
+    <div class="stats"><div class="stat"><b>${inView.length - sums.length}</b><span>Need a start date</span></div><div class="stat"><b>${tot.counted}</b><span>Counted weather days (all jobs)</span></div>
+    <div class="stat"><b>${tot.pend}</b><span>Wet-outs to confirm</span></div></div>
+    <div class="row"><button id="lcsv">Export list CSV</button><button id="lxlsx">Export list Excel</button></div></div>`;
+  const list = inView.map((j) => {
     const rows = analyze(j), s = summarize(j, rows), f = j.forecast?.[today];
     const lastDay = [...rows].reverse().find((r) => r.has);
     const noStart = !j.start;
@@ -264,18 +339,20 @@ function viewHome() {
       <div class="stat"><b>${f ? f.pop + '%' : '—'}</b><span>Today's rain chance</span></div></div>
       <div class="mute small">Last day: ${lastDay ? fmtShort(lastDay.date) + ' ' + fmtIn(lastDay.d.precip, lastDay.d.precipText) + ' in' : 'none'}${s.missing ? ` · <b>${s.missing} missing</b>` : ''}</div></a></div>`}`;
   }).join('');
-  const empty = CONFIG.STORE ? `<div class="card"><h2>No jobs yet</h2><p>Add your first job to start logging rain days, or load a sample job to see how it works.</p><button id="sample">Load sample job</button></div>` : '<div class="card">No jobs yet.</div>';
-  shell('Rain Delay Tracker', `${list || empty}
+  const empty = S.jobs.length ? `<div class="card"><h2>No jobs in ${esc(listName(S.activeList))}</h2><p class="mute">Add a job here, or move one in from Edit job › List.</p></div>` : CONFIG.STORE ? `<div class="card"><h2>No jobs yet</h2><p>Add your first job to start logging rain days, or load a sample job to see how it works.</p><button id="sample">Load sample job</button></div>` : '<div class="card">No jobs yet.</div>';
+  shell('Rain Delay Tracker', `${listCard}${list || empty}
     <div class="row"><a class="btn primary grow" href="#/new">＋ Add job</a></div>
+    <div class="row" style="margin-top:8px"><a class="btn grow" href="#/lists">Manage lists</a></div>
     <div class="card" style="margin-top:12px"><h2>Backup</h2><p class="mute small">Jobs are saved only in this browser on this device. Export a backup now and then.</p>
       <div class="row"><button id="bk">Download backup (JSON)</button><label class="btn" style="margin:0;font-weight:400">Restore backup<input type="file" id="rs" accept="application/json,.json" hidden></label></div></div>
-    ${CONFIG.STORE ? '<p class="small"><a href="privacy.html">Privacy policy</a> · <a href="support.html">Support</a></p>' : ''}<p class="mute small">Weather: Iowa Environmental Mesonet ASOS daily summaries (may differ slightly from official NWS CLI).${SEED_JOB ? " Seed job history (Sep 1-Nov 16) is NWS CLI KIAH." : ""} Forecast: api.weather.gov. Normals: NCEI 1991-2020. v${VERSION}</p>`);
-  if ($('#sample')) $('#sample').onclick = () => { S.jobs.push(sampleJob()); save(); refreshAll(false); };
+    ${CONFIG.STORE ? '<p class="small"><a href="privacy.html">Privacy policy</a> · <a href="support.html">Support</a></p>' : ''}<p class="mute small">Backups include all lists and jobs. Weather: Iowa Environmental Mesonet ASOS daily summaries (may differ slightly from official NWS CLI).${SEED_JOB ? " Seed job history (Sep 1-Nov 16) is NWS CLI KIAH." : ""} Forecast: api.weather.gov. Normals: NCEI 1991-2020. v${VERSION}</p>`, null, true);
+  $('#lcsv').onclick = exportListCSV; $('#lxlsx').onclick = exportListXLSX;
+  if ($('#sample')) $('#sample').onclick = () => { S.jobs.push({ ...sampleJob(), listId: S.activeList !== 'all' ? S.activeList : S.defaultList }); save(); refreshAll(false); };
   $('#bk').onclick = () => download(`rain-delay-backup-${chicagoToday()}.json`, new Blob([JSON.stringify(S, null, 1)], { type: 'application/json' }));
   $('#rs').onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
     try { const d = JSON.parse(await f.text()); if (!Array.isArray(d.jobs)) throw new Error('Not a Rain Delay backup');
-      if (!confirm(`Replace all data on this device with backup (${d.jobs.length} job(s))?`)) return; S = d; save(); toast('Backup restored'); render();
+      if (!confirm(`Replace all data on this device with backup (${d.jobs.length} job(s))?`)) return; S = d; migrate(); save(); toast('Backup restored'); render();
     } catch (err) { alert('Restore failed: ' + err.message); }
   };
 }
@@ -286,6 +363,7 @@ function viewEdit(j) {
   shell(isNew ? 'Add job' : 'Edit job', `<form class="card" id="f" autocomplete="off">
     <label for="name">Job name</label><input id="name" required value="${esc(v.name)}" placeholder="e.g. Riverside Phase 2">
     <label for="number">Job number</label><input id="number" value="${esc(v.number)}">
+    <label for="listId">List</label><select id="listId">${S.lists.map((l) => `<option value="${l.id}" ${(v.listId || (S.activeList !== 'all' ? S.activeList : S.defaultList)) === l.id ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}<option value="__new">＋ New list…</option></select>
     <label for="address">Jobsite address</label><input id="address" value="${esc(v.address)}" placeholder="Street, City, TX ZIP">
     <div class="row" style="margin-top:8px"><button type="button" id="geo">Find lat/lon from address</button><span id="geomsg" class="mute small"></span></div>
     <div class="grid2"><div><label for="lat">Latitude</label><input id="lat" inputmode="decimal" value="${esc(v.lat)}" placeholder="29.9303"></div>
@@ -356,7 +434,9 @@ function viewEdit(j) {
     const sid = sel.value, s = stationById(sid);
     const workDays = [...app.querySelectorAll('.dow.on')].map((b) => +b.dataset.dow).sort();
     if (!workDays.length) return alert('Pick at least one work day.');
-    const data = { workDays, name: $('#name').value.trim(), number: $('#number').value.trim(), address: $('#address').value.trim(), lat, lon, start, end, threshold: thr, wetOut: $('#wetOut').checked,
+    let listId = $('#listId').value;
+    if (listId === '__new') { listId = newList(prompt('Name for the new list:')) || S.defaultList; }
+    const data = { listId, workDays, name: $('#name').value.trim(), number: $('#number').value.trim(), address: $('#address').value.trim(), lat, lon, start, end, threshold: thr, wetOut: $('#wetOut').checked,
       station: sid, stationMi: +miles(lat, lon, s.lat, s.lon).toFixed(2), stationAuto: auto, notes: $('#notes').value, area: area || null };
     const moved = j && (Math.abs(j.lat - lat) > 1e-6 || Math.abs(j.lon - lon) > 1e-6);
     if (locConfirmed || moved) { data.approx = false; data.locNote = ''; }
