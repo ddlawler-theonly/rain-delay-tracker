@@ -1,0 +1,24 @@
+{
+  "appId": "com.blueworksfieldpro.raindelay",
+  "appName": "Rain Delay Tracker",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#0B2E4F"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "launchShowDuration": 800,
+      "backgroundColor": "#0B2E4F",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "overlaysWebView": true,
+      "style": "DARK"
+    },
+    "LocalNotifications": {
+      "iconColor": "#0B5CAD"
+    }
+  }
+}

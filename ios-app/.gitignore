@@ -1,0 +1,15 @@
+node_modules/
+www/
+build/
+fastlane/*.p8
+fastlane/report.xml
+fastlane/README.md
+*.ipa
+*.dSYM.zip
+.DS_Store
+ios/App/App/public/
+ios/App/App/capacitor.config.json
+ios/App/App/config.xml
+ios/App/App/Assets.xcassets/AppIcon.appiconset/*.png
+ios/App/App/Assets.xcassets/Splash.imageset/*.png
+ios/App/CapApp-SPM/.build/
