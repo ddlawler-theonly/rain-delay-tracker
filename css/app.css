@@ -69,3 +69,12 @@ td.n,th.n{text-align:right}
   #print th{background:#eee!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   @page{margin:12mm}
 }
+.mapbox{height:340px;border-radius:8px;border:1px solid var(--line);z-index:0}
+.jobmap{height:220px;border-radius:8px;margin-top:8px;z-index:0}
+.mapmodes button{min-height:36px;padding:5px 10px;font-size:14px}
+.mapmodes button.sel{background:#0b2e4f;color:#fff;border-color:#0b2e4f}
+.leaflet-control-layers-toggle{background-image:none!important;width:auto!important;height:auto!important;padding:6px 8px;font:600 13px/1 sans-serif;color:#14181c;text-decoration:none}
+.leaflet-control-layers-toggle::after{content:'Layers'}
+.leaflet-touch .leaflet-control-layers-toggle{width:auto!important;height:auto!important}
+.pill.appx{background:#fff3d6;color:#8a5a00;border:1px solid #e9c46a}
+.banner.warn{background:var(--warnbg);color:var(--warn)}
