@@ -1,5 +1,5 @@
 // Rain Delay Tracker - static, offline-capable. All data lives in this browser (localStorage).
-import { STATIONS, SEED_DAYS, NORMALS, PRESET_JOBS } from './data.js';
+import { STATIONS, SEED_DAYS, SEED_JOB, NORMALS, PRESET_JOBS } from './data.js';
 import { CONFIG } from './config.js';
 const N = () => window.RDNative; // native bridge (iOS app only)
 
@@ -37,19 +37,16 @@ function stationById(id) { return ST.find((s) => s.id === id); }
 
 // ---------- storage ----------
 let S = load();
+if (!S && N()?.restore) { try { const v = await N().restore(); if (v) { localStorage.setItem(KEY, v); S = load(); } } catch (e) {} } // iOS app: recover from native backup
 function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && Array.isArray(s.jobs)) return s; } catch (e) {} return null; }
-function save() { localStorage.setItem(KEY, JSON.stringify(S)); }
+function save() { const v = JSON.stringify(S); localStorage.setItem(KEY, v); N()?.backup?.(v); }
 function uid() { return 'j' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 function seed() {
   const days = {};
   for (const d of SEED_DAYS) {
     days[d.date] = { precip: d.precip, precipText: d.precipText, hi: d.hi, lo: d.lo, gust: d.gust, station: 'KIAH', source: 'NWS CLI KIAH', remarks: d.remarks || '', missing: d.precip == null };
   }
-  S = { version: 1, jobs: [{
-    id: 'ig0057', name: 'Ig0057 Lauder Rd', number: 'Ig0057', address: '2400 Aldine Bender Rd, Houston TX 77032',
-    lat: 29.930345, lon: -95.348624, start: '2026-09-01', end: '2027-01-31', threshold: 0.5, wetOut: true,
-    station: 'IAH', stationMi: 3.80, stationAuto: true, notes: '', days, forecast: {}, created: new Date().toISOString(),
-  }] };
+  S = { version: 1, jobs: SEED_JOB ? [{ ...SEED_JOB, days, forecast: {}, created: new Date().toISOString() }] : [] };
   save();
 }
 function sampleJob() {
@@ -248,7 +245,7 @@ function viewHome() {
     const noStart = !j.start;
     return `<div class="card"><a class="job" href="#/job/${j.id}"><h2>${esc(j.name)}</h2>${j.approx ? `<span class="pill appx">${j.locNote && j.locNote.startsWith('LOCATION UNKNOWN') ? 'Location unknown - add address' : 'Approximate - confirm address'}</span>` : ''}
       <div class="mute small">${esc(j.address)} · ${esc(icao(j.station))} ${j.stationMi != null ? j.stationMi.toFixed(2) + ' mi' : ''}</div>
-      <div class="mute small">NTP ${fmtShort(j.start)} → ${fmtShort(j.end)} · rule ≥ ${j.threshold.toFixed(2)} in${j.wetOut ? ' + wet-out next day' : ''}</div>
+      <div class="mute small">${j.start || j.end ? `NTP ${fmtShort(j.start)} → ${fmtShort(j.end)}` : 'Dates not set'} · rule ≥ ${j.threshold.toFixed(2)} in${j.wetOut ? ' + wet-out next day' : ''}</div>
       ${noStart ? '<div class="banner warn" style="margin:8px 0 0">Add start date to begin tracking</div></a></div>' : ''}${noStart ? '' : `<div class="stats"><div class="stat"><b>${s.counted}</b><span>Counted weather days</span></div>
       <div class="stat"><b>${s.total.toFixed(2)}″</b><span>Rain to date</span></div>
       <div class="stat"><b>${s.wetPend}</b><span>Wet-out to confirm</span></div>
@@ -260,7 +257,7 @@ function viewHome() {
     <div class="row"><a class="btn primary grow" href="#/new">＋ Add job</a></div>
     <div class="card" style="margin-top:12px"><h2>Backup</h2><p class="mute small">Jobs are saved only in this browser on this device. Export a backup now and then.</p>
       <div class="row"><button id="bk">Download backup (JSON)</button><label class="btn" style="margin:0;font-weight:400">Restore backup<input type="file" id="rs" accept="application/json,.json" hidden></label></div></div>
-    ${CONFIG.STORE ? '<p class="small"><a href="privacy.html">Privacy policy</a> · <a href="support.html">Support</a></p>' : ''}<p class="mute small">Weather: Iowa Environmental Mesonet ASOS daily summaries (may differ slightly from official NWS CLI). Lauder Rd history Sept 1-Nov 16 is NWS CLI KIAH. Forecast: api.weather.gov. Normals: NCEI 1991-2020. v${VERSION}</p>`);
+    ${CONFIG.STORE ? '<p class="small"><a href="privacy.html">Privacy policy</a> · <a href="support.html">Support</a></p>' : ''}<p class="mute small">Weather: Iowa Environmental Mesonet ASOS daily summaries (may differ slightly from official NWS CLI).${SEED_JOB ? " Seed job history (Sep 1-Nov 16) is NWS CLI KIAH." : ""} Forecast: api.weather.gov. Normals: NCEI 1991-2020. v${VERSION}</p>`);
   if ($('#sample')) $('#sample').onclick = () => { S.jobs.push(sampleJob()); save(); refreshAll(false); };
   $('#bk').onclick = () => download(`rain-delay-backup-${chicagoToday()}.json`, new Blob([JSON.stringify(S, null, 1)], { type: 'application/json' }));
   $('#rs').onchange = async (e) => {
@@ -275,7 +272,7 @@ function viewEdit(j) {
   const isNew = !j;
   const v = j || { name: '', number: '', address: '', lat: '', lon: '', start: '', end: '', threshold: 0.5, wetOut: true, station: '', stationAuto: true, notes: '' };
   shell(isNew ? 'Add job' : 'Edit job', `<form class="card" id="f" autocomplete="off">
-    <label for="name">Job name</label><input id="name" required value="${esc(v.name)}" placeholder="e.g. Bergamo Phase 2">
+    <label for="name">Job name</label><input id="name" required value="${esc(v.name)}" placeholder="e.g. Riverside Phase 2">
     <label for="number">Job number</label><input id="number" value="${esc(v.number)}">
     <label for="address">Jobsite address</label><input id="address" value="${esc(v.address)}" placeholder="Street, City, TX ZIP">
     <div class="row" style="margin-top:8px"><button type="button" id="geo">Find lat/lon from address</button><span id="geomsg" class="mute small"></span></div>
@@ -476,6 +473,7 @@ function printView(j) {
 
 // ---------- boot ----------
 render();
+N()?.hideSplash?.();
 if (!window.Capacitor?.isNativePlatform?.() && 'serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('./sw.js').catch(() => {});
 refreshAll(false);
 window.addEventListener('online', () => refreshAll(false));
