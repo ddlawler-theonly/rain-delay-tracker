@@ -1,5 +1,5 @@
 // Map picker (Leaflet 1.9.4 bundled in vendor/leaflet, loaded on demand; not needed for offline use).
-// Tiles: OpenStreetMap standard tiles (attribution required) + optional Esri World Imagery (attribution required).
+// Tiles: OpenStreetMap standard tiles (attribution required) + optional USGS National Map imagery (US public domain; credit shown).
 let loading = null;
 export function loadLeaflet() {
   if (window.L) return Promise.resolve(window.L);
@@ -13,7 +13,7 @@ export function loadLeaflet() {
 }
 function baseLayers(L) {
   const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' });
-  const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagery &copy; Esri, Maxar, Earthstar Geographics, and the GIS User Community' });
+  const sat = L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, maxNativeZoom: 16, attribution: 'Imagery: USGS The National Map / USDA NAIP' });
   return { osm, sat };
 }
 const pinStyle = { radius: 9, color: '#fff', weight: 3, fillColor: '#d62828', fillOpacity: 1 };

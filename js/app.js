@@ -149,9 +149,19 @@ const fmtIn = (v, txt) => (v == null ? 'M' : txt === 'T' || (v > 0 && v < 0.005)
 const CREW = { worked: 'Worked', partial: 'Partial', rained_out: 'Rained out' };
 
 // ---------- network: IEM ASOS daily + NWS forecast ----------
+// IEM answers HTTP 429 to back-to-back requests from one IP, so space calls ~3 s apart and retry 429s with backoff.
+let lastIEM = 0;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function fetchIEM(stationId, sts, ets) {
   const u = `https://mesonet.agron.iastate.edu/cgi-bin/request/daily.py?network=TX_ASOS&stations=${encodeURIComponent(stationId)}&sts=${sts}&ets=${ets}&format=csv`;
-  const res = await fetch(u, { cache: 'no-store' });
+  let res;
+  for (const backoff of [0, 5000, 10000, 20000]) {
+    if (backoff) await sleep(backoff);
+    const wait = lastIEM + 3200 - Date.now(); if (wait > 0) await sleep(wait);
+    lastIEM = Date.now();
+    res = await fetch(u, { cache: 'no-store' });
+    if (res.status !== 429) break;
+  }
   if (!res.ok) throw new Error('IEM HTTP ' + res.status);
   const txt = await res.text();
   const lines = txt.trim().split(/\r?\n/);
@@ -173,7 +183,7 @@ async function fetchIEM(stationId, sts, ets) {
   }
   return out;
 }
-let busy = false;
+let busy = false, rerun = false;
 async function refreshJob(j, { force = false } = {}) {
   if (!j.start) return { added: 0, missing: 0, skipped: true };
   const today = chicagoToday();
@@ -224,7 +234,8 @@ async function fetchForecast(j) {
   } catch (e) { return null; }
 }
 async function refreshAll(force = false) {
-  if (busy || !navigator.onLine) { if (!navigator.onLine) toast('Offline - showing saved data.'); return; }
+  if (!navigator.onLine) { toast('Offline - showing saved data.'); return; }
+  if (busy) { rerun = true; return; } // a refresh is running: run again when it ends so new/edited jobs are not skipped
   busy = true; setStatus('Updating weather…');
   let msg = [], err = [];
   for (const j of S.jobs) {
@@ -242,6 +253,7 @@ async function refreshAll(force = false) {
   S.lastRun = new Date().toISOString(); save();
   setStatus(err.length ? 'Some updates failed: ' + err.join('; ') : msg.length ? msg.join(' · ') : 'Up to date through yesterday.', err.length ? 'err' : 'ok');
   render();
+  if (rerun) { rerun = false; refreshAll(force); }
 }
 let statusMsg = null;
 function setStatus(t, kind = 'info') { statusMsg = { t, kind, at: nowChicago() }; const el = $('#status'); if (el) el.outerHTML = statusHtml(); }
