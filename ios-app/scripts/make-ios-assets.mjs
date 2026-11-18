@@ -1,15 +1,18 @@
-// Generates the iOS AppIcon set and launch/splash images from the Rain Out cloud glyph (same art as icons/icon.svg).
+// Generates the iOS AppIcon set and launch/splash images from icons/icon.svg.
 // Opaque PNGs (App Store rejects icons with alpha). Run in CI before building (PNGs are not committed).
 import sharp from 'sharp'; import fs from 'node:fs'; import path from 'node:path';
 const root = path.resolve(import.meta.dirname, '..');
 const assets = path.join(root, 'ios/App/App/Assets.xcassets');
 const BG = '#0B2E4F';
-const glyph = `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" fill="${BG}"/><g transform="translate(40 24) scale(.84)"><path d="M150 250a110 110 0 0 1 214-30 80 80 0 0 1 8 160H160a70 70 0 0 1-10-130z" fill="#fff"/><g stroke="#4fa3ff" stroke-width="22" stroke-linecap="round"><path d="M190 410l-14 40"/><path d="M262 410l-14 40"/><path d="M334 410l-14 40"/></g><rect x="200" y="270" width="112" height="70" rx="10" fill="#f0b400"/><path d="M220 290h72M220 318h48" stroke="${BG}" stroke-width="12" stroke-linecap="round"/></g></svg>`;
+// Official icon art: ../icons/icon.svg (Derek's calendar icon). iOS applies its own corner mask, so the rounded
+// corners are removed (full-bleed navy) and every PNG is flattened onto navy (no alpha).
+const glyph = fs.readFileSync(path.join(root, '../icons/icon.svg'), 'utf8').replace(' rx="96" fill="#0b2e4f"', ' fill="#0b2e4f"');
+if (!glyph.includes('<rect width="512" height="512" fill="#0b2e4f"/>')) throw new Error('icon.svg background rect not found');
 const render = (size, file) => sharp(Buffer.from(glyph), { density: Math.ceil(72 * size / 512) }).resize(size, size).flatten({ background: BG }).removeAlpha().png().toFile(file);
 const iconDir = path.join(assets, 'AppIcon.appiconset');
 fs.rmSync(iconDir, { recursive: true, force: true }); fs.mkdirSync(iconDir, { recursive: true });
 const specs = [['iphone', 20, 2], ['iphone', 20, 3], ['iphone', 29, 2], ['iphone', 29, 3], ['iphone', 40, 2], ['iphone', 40, 3], ['iphone', 60, 2], ['iphone', 60, 3],
-  ['ipad', 20, 1], ['ipad', 20, 2], ['ipad', 29, 1], ['ipad', 29, 2], ['ipad', 40, 1], ['ipad', 40, 2], ['ipad', 76, 1], ['ipad', 76, 2], ['ipad', 83.5, 2], ['ios-marketing', 1024, 1]];
+  ['ios-marketing', 1024, 1]]; // iPhone-only app (TARGETED_DEVICE_FAMILY = 1), so no iPad icon sizes
 const images = [];
 for (const [idiom, pt, scale] of specs) { const px = Math.round(pt * scale); const name = `AppIcon-${pt}@${scale}x.png`; await render(px, path.join(iconDir, name)); images.push({ filename: name, idiom, scale: `${scale}x`, size: `${pt}x${pt}` }); }
 fs.writeFileSync(path.join(iconDir, 'Contents.json'), JSON.stringify({ images, info: { author: 'xcode', version: 1 } }, null, 2));

@@ -5,7 +5,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const cfg = JSON.parse(fs.readFileSync(path.join(root, 'raindelay.config.json'), 'utf8'));
 const cap = {
   appId: cfg.bundleId, appName: cfg.appName, webDir: 'www',
-  ios: { contentInset: 'never', backgroundColor: '#0B2E4F' },
+  ios: { contentInset: 'never', backgroundColor: '#0B2E4F', appendUserAgent: `RainOut/${cfg.version} (+https://ddlawler-theonly.github.io/rain-delay-tracker/support.html)` },
   plugins: {
     SplashScreen: { launchAutoHide: true, launchShowDuration: 800, backgroundColor: '#0B2E4F', showSpinner: false },
     StatusBar: { overlaysWebView: true, style: 'DARK' },
@@ -18,6 +18,7 @@ if (fs.existsSync(pbx)) {
   let s = fs.readFileSync(pbx, 'utf8');
   s = s.replace(/PRODUCT_BUNDLE_IDENTIFIER = [^;]+;/g, `PRODUCT_BUNDLE_IDENTIFIER = ${cfg.bundleId};`);
   s = s.replace(/MARKETING_VERSION = [^;]+;/g, `MARKETING_VERSION = ${cfg.version};`);
+  s = s.replace(/TARGETED_DEVICE_FAMILY = [^;]+;/g, 'TARGETED_DEVICE_FAMILY = 1;'); // iPhone only (no iPad screenshots needed)
   fs.writeFileSync(pbx, s);
   const plist = path.join(root, 'ios/App/App/Info.plist');
   let p = fs.readFileSync(plist, 'utf8');
@@ -27,6 +28,7 @@ if (fs.existsSync(pbx)) {
   ensure('UIFileSharingEnabled', '<true/>');
   ensure('LSSupportsOpeningDocumentsInPlace', '<true/>');
   p = p.replace('<string>armv7</string>', '<string>arm64</string>');
+  p = p.replace(/\s*<key>UISupportedInterfaceOrientations~ipad<\/key>\s*<array>[\s\S]*?<\/array>/, '');
   fs.writeFileSync(plist, p);
   console.log('Applied config to Xcode project:', cfg.bundleId, cfg.version);
 } else console.log('capacitor.config.json written (no ios/ yet)');
