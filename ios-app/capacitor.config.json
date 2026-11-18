@@ -1,6 +1,6 @@
 {
   "appId": "com.blueworksfieldpro.raindelay",
-  "appName": "Rain Delay Tracker",
+  "appName": "Rain Out",
   "webDir": "www",
   "ios": {
     "contentInset": "never",

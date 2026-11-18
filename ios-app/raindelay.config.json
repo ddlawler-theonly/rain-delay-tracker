@@ -1,6 +1,6 @@
 {
-  "appName": "Rain Delay Tracker",
-  "displayName": "Rain Delay",
+  "appName": "Rain Out",
+  "displayName": "Rain Out",
   "bundleId": "com.blueworksfieldpro.raindelay",
   "version": "1.0.0",
   "store": true

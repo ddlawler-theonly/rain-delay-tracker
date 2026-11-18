@@ -39,7 +39,7 @@ platform :ios do
     upload_to_testflight(
       api_key: api_key, app_identifier: CFG['bundleId'],
       skip_waiting_for_build_processing: true,   # internal testers get it automatically once Apple finishes processing
-      changelog: ENV['TESTFLIGHT_CHANGELOG'] || "Rain Delay #{CFG['version']} (#{build_number})"
+      changelog: ENV['TESTFLIGHT_CHANGELOG'] || "Rain Out #{CFG['version']} (#{build_number})"
     )
   ensure
     File.delete(key_path) if key_path && File.exist?(key_path)
