@@ -1,4 +1,4 @@
-# Rain Delay Tracker: native iOS app (Capacitor 8) → TestFlight
+# Rain Out: native iOS app (Capacitor 8) → TestFlight
 
 Mirrors the Level Book iOS setup. This folder wraps the web app at the repo root (the same files GitHub Pages serves) in a native iOS shell.
 
@@ -19,4 +19,4 @@ Store build vs GitHub Pages build: Pages ships `js/config.js` with `STORE: false
 
 Secrets (repo Settings › Secrets and variables › Actions): `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_KEY` (full .p8 text), `APPLE_TEAM_ID`. See `/appstore/DEREK-STEPS.md` in the workspace for the Apple-side steps.
 
-Info.plist: display name "Rain Delay", `ITSAppUsesNonExemptEncryption = NO`, file sharing on (autobackup visible in Files), no location/camera/photo permission strings. Notifications permission is requested at runtime the first time a rain day is flagged.
+Info.plist: display name "Rain Out", `ITSAppUsesNonExemptEncryption = NO`, file sharing on (autobackup visible in Files), no location/camera/photo permission strings. Notifications permission is requested at runtime the first time a rain day is flagged.

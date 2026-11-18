@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Rain Delay Tracker - native iOS (Capacitor 8) wrapper around the offline web app (App Store build: starts empty)",
+  "description": "Rain Out - native iOS (Capacitor 8) wrapper around the offline web app (App Store build: starts empty)",
   "scripts": {
     "build": "node scripts/build-web.mjs",
     "apply-config": "node scripts/apply-config.mjs",

@@ -1,4 +1,4 @@
-# Rain Delay Tracker
+# Rain Out
 
 Static, offline-capable rain / weather-day log for construction jobs. Hosted on GitHub Pages:
 https://ddlawler-theonly.github.io/rain-delay-tracker/
