@@ -4,7 +4,8 @@
   "webDir": "www",
   "ios": {
     "contentInset": "never",
-    "backgroundColor": "#0B2E4F"
+    "backgroundColor": "#0B2E4F",
+    "appendUserAgent": "RainOut/1.0.0 (+https://ddlawler-theonly.github.io/rain-delay-tracker/support.html)"
   },
   "plugins": {
     "SplashScreen": {
