@@ -1,6 +1,6 @@
 {
-  "name": "Rain Delay Tracker",
-  "short_name": "Rain Delay",
+  "name": "Rain Out",
+  "short_name": "Rain Out",
   "description": "Rain and weather-day log for construction jobs",
   "id": "./",
   "start_url": "./",
