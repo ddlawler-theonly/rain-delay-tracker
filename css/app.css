@@ -93,3 +93,5 @@ td.n,th.n{text-align:right}
 .listmenu .lmi.on{background:#e3efff;font-weight:700}
 .listmenu .lmi .cnt{color:var(--mute);font-weight:400;margin-left:18px}
 .listmenu hr{border:0;border-top:1px solid var(--line);margin:4px 0}
+.brand{font-weight:800;font-size:17px;letter-spacing:.3px;white-space:nowrap}
+@media (max-width:430px){.top .rlabel{display:none}}

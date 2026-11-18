@@ -1,4 +1,4 @@
-// Rain Delay Tracker - static, offline-capable. All data lives in this browser (localStorage).
+// Rain Out - static, offline-capable. All data lives in this browser (localStorage).
 import { STATIONS, SEED_DAYS, SEED_JOB, NORMALS, PRESET_JOBS } from './data.js';
 import { CONFIG } from './config.js';
 const N = () => window.RDNative; // native bridge (iOS app only)
@@ -261,8 +261,8 @@ async function geocode(addr) {
 // ---------- views ----------
 const app = document.getElementById('app');
 function shell(title, body, back, listPicker) {
-  app.innerHTML = `<header class="top">${back ? `<a href="${back}" aria-label="Back" style="font-size:22px;text-decoration:none">‹</a>` : ''}${listPicker ? listSelectHtml() : `<h1>${esc(title)}</h1>`}
-    <button class="ghost" id="btnRefresh" title="Fetch missing days">↻ Refresh</button></header><main>${statusHtml()}${body}</main><div id="print"></div>`;
+  app.innerHTML = `<header class="top">${back ? `<a href="${back}" aria-label="Back" style="font-size:22px;text-decoration:none">‹</a>` : ''}${listPicker ? `<span class="brand">Rain Out</span>${listSelectHtml()}` : `<h1>${esc(title)}</h1>`}
+    <button class="ghost" id="btnRefresh" title="Fetch missing days" aria-label="Refresh">↻<span class="rlabel"> Refresh</span></button></header><main>${statusHtml()}${body}</main><div id="print"></div>`;
   $('#btnRefresh').onclick = () => refreshAll(false);
   const lb = $('#listBtn'), lm = $('#listMenu');
   if (lb) lb.onclick = (e) => { e.stopPropagation(); lm.hidden = !lm.hidden; lb.setAttribute('aria-expanded', !lm.hidden); };
@@ -340,7 +340,7 @@ function viewHome() {
       <div class="mute small">Last day: ${lastDay ? fmtShort(lastDay.date) + ' ' + fmtIn(lastDay.d.precip, lastDay.d.precipText) + ' in' : 'none'}${s.missing ? ` · <b>${s.missing} missing</b>` : ''}</div></a></div>`}`;
   }).join('');
   const empty = S.jobs.length ? `<div class="card"><h2>No jobs in ${esc(listName(S.activeList))}</h2><p class="mute">Add a job here, or move one in from Edit job › List.</p></div>` : CONFIG.STORE ? `<div class="card"><h2>No jobs yet</h2><p>Add your first job to start logging rain days, or load a sample job to see how it works.</p><button id="sample">Load sample job</button></div>` : '<div class="card">No jobs yet.</div>';
-  shell('Rain Delay Tracker', `${listCard}${list || empty}
+  shell('Rain Out', `${listCard}${list || empty}
     <div class="row"><a class="btn primary grow" href="#/new">＋ Add job</a></div>
     <div class="row" style="margin-top:8px"><a class="btn grow" href="#/lists">Manage lists</a></div>
     <div class="card" style="margin-top:12px"><h2>Backup</h2><p class="mute small">Jobs are saved only in this browser on this device. Export a backup now and then.</p>
@@ -348,10 +348,10 @@ function viewHome() {
     ${CONFIG.STORE ? '<p class="small"><a href="privacy.html">Privacy policy</a> · <a href="support.html">Support</a></p>' : ''}<p class="mute small">Backups include all lists and jobs. Weather: Iowa Environmental Mesonet ASOS daily summaries (may differ slightly from official NWS CLI).${SEED_JOB ? " Seed job history (Sep 1-Nov 16) is NWS CLI KIAH." : ""} Forecast: api.weather.gov. Normals: NCEI 1991-2020. v${VERSION}</p>`, null, true);
   $('#lcsv').onclick = exportListCSV; $('#lxlsx').onclick = exportListXLSX;
   if ($('#sample')) $('#sample').onclick = () => { S.jobs.push({ ...sampleJob(), listId: S.activeList !== 'all' ? S.activeList : S.defaultList }); save(); refreshAll(false); };
-  $('#bk').onclick = () => download(`rain-delay-backup-${chicagoToday()}.json`, new Blob([JSON.stringify(S, null, 1)], { type: 'application/json' }));
+  $('#bk').onclick = () => download(`rain-out-backup-${chicagoToday()}.json`, new Blob([JSON.stringify(S, null, 1)], { type: 'application/json' }));
   $('#rs').onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
-    try { const d = JSON.parse(await f.text()); if (!Array.isArray(d.jobs)) throw new Error('Not a Rain Delay backup');
+    try { const d = JSON.parse(await f.text()); if (!Array.isArray(d.jobs)) throw new Error('Not a Rain Out backup');
       if (!confirm(`Replace all data on this device with backup (${d.jobs.length} job(s))?`)) return; S = d; migrate(); save(); toast('Backup restored'); render();
     } catch (err) { alert('Restore failed: ' + err.message); }
   };
@@ -543,7 +543,7 @@ function headerLines(j) {
   return [[`${j.name}${j.number ? ' (' + j.number + ')' : ''}`], [j.address], [`Station: ${icao(j.station)} ${stationById(j.station)?.name || ''}, ${j.stationMi?.toFixed(2)} mi from site`],
     [`NTP ${j.start} - completion ${j.end}; rule: >= ${j.threshold.toFixed(2)} in${j.wetOut ? ' plus next work day if wet out (confirmed)' : ''}; work days: ${workLabel(j)} (off days shown, never counted)`],
     [`Counted weather days: ${s.counted} (rain days ${s.rain}, wet-out confirmed ${s.wetConf}, pending ${s.wetPend}); total rain ${s.total.toFixed(2)} in; missing days ${s.missing}`],
-    [`Generated ${nowChicago()} by Rain Delay Tracker. Sources: NWS CLI (official daily climate report) where labeled; otherwise IEM ASOS daily summary (may differ slightly from NWS CLI). Missing days are not estimated.`]];
+    [`Generated ${nowChicago()} by Rain Out. Sources: NWS CLI (official daily climate report) where labeled; otherwise IEM ASOS daily summary (may differ slightly from NWS CLI). Missing days are not estimated.`]];
 }
 function exportXLSX(j) {
   const XLSX = window.XLSX; if (!XLSX) return alert('Excel library not loaded.');
