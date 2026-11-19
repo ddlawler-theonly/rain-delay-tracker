@@ -1,12 +1,14 @@
 require 'json'
+require 'base64'
 default_platform(:ios)
 
 ROOT = ['raindelay.config.json', '../raindelay.config.json'].map { |p| File.expand_path(p) }.find { |p| File.exist?(p) }.then { |p| File.dirname(p) }
 CFG  = JSON.parse(File.read(File.join(ROOT, 'raindelay.config.json')))
 PROJECT = File.join(ROOT, 'ios/App/App.xcodeproj')
+DIST_CERT_ID = ENV['DIST_CERT_ID'] || '3FZNU7Q5FT'   # public cert id (not a secret); its p12 is in repo secrets
 
 platform :ios do
-  desc 'Build, sign (manual cert + App Store profile via the App Store Connect API key) and upload to TestFlight. Never submits for review.'
+  desc 'Build, sign (reusable distribution cert from repo secrets + App Store profile) and upload to TestFlight (SKIP_UPLOAD=1: sign check only). Never submits for review.'
   lane :beta do
     key_id    = ENV.fetch('APP_STORE_CONNECT_KEY_ID')
     issuer_id = ENV.fetch('APP_STORE_CONNECT_ISSUER_ID')
@@ -28,14 +30,17 @@ platform :ios do
 
     auth = "-authenticationKeyPath #{key_path} -authenticationKeyID #{key_id} -authenticationKeyIssuerID #{issuer_id}"
 
-    # Signing: manual, via the API key. Xcode cloud signing needs an Admin key ("Cloud signing permission error"),
-    # and automatic archive signing wants a Development profile, which needs a registered device (this team has none).
-    # get_certificates reuses a distribution cert only if its private key is in the keychain; on a fresh CI runner it
-    # creates one (Apple allows a few per team). get_provisioning_profile makes/refreshes the App Store profile for it.
-    keychain = File.expand_path('~/Library/Keychains/fastlane_tmp_keychain-db')
-    get_certificates(api_key: api_key, development: false, keychain_path: (ENV['CI'] ? keychain : nil), keychain_password: (ENV['CI'] ? '' : nil))
-    get_provisioning_profile(api_key: api_key, app_identifier: CFG['bundleId'],
-                             cert_id: lane_context[SharedValues::CERT_CERTIFICATE_ID])
+    # Signing: manual. ONE reusable Apple Distribution cert (DIST_CERT_ID) lives in the DIST_CERT_P12_BASE64 /
+    # DIST_CERT_P12_PASSWORD repo secrets and is imported into the temporary CI keychain, so runs never create certs.
+    # get_provisioning_profile reuses the 'com.blueworksfieldpro.raindelay AppStore' profile that contains that cert
+    # (and only regenerates it if it is missing/invalid).
+    p12_b64 = ENV['DIST_CERT_P12_BASE64'].to_s
+    UI.user_error!('Missing repo secret DIST_CERT_P12_BASE64 (reusable distribution cert)') if p12_b64.empty?
+    p12_path = File.join(ROOT, 'fastlane', 'dist.p12')
+    File.binwrite(p12_path, Base64.decode64(p12_b64)); File.chmod(0o600, p12_path)
+    import_certificate(certificate_path: p12_path, certificate_password: ENV.fetch('DIST_CERT_P12_PASSWORD'),
+                       keychain_name: 'fastlane_tmp_keychain', keychain_password: '')
+    get_provisioning_profile(api_key: api_key, app_identifier: CFG['bundleId'], cert_id: DIST_CERT_ID)
     profile = lane_context[SharedValues::SIGH_NAME]
     update_code_signing_settings(path: PROJECT, targets: ['App'], use_automatic_signing: false, team_id: team_id,
                                  code_sign_identity: 'Apple Distribution', profile_name: profile, bundle_identifier: CFG['bundleId'])
@@ -49,6 +54,10 @@ platform :ios do
                         manageAppVersionAndBuildNumber: false, provisioningProfiles: { CFG['bundleId'] => profile } }
     )
 
+    if ENV['SKIP_UPLOAD'] == '1'
+      UI.success("Sign check only: signed IPA built (#{CFG['version']} (#{build_number})); NOT uploaded to TestFlight")
+      next
+    end
     upload_to_testflight(
       api_key: api_key, app_identifier: CFG['bundleId'],
       skip_waiting_for_build_processing: true,   # internal testers get it automatically once Apple finishes processing
@@ -56,5 +65,6 @@ platform :ios do
     )
   ensure
     File.delete(key_path) if key_path && File.exist?(key_path)
+    File.delete(p12_path) if p12_path && File.exist?(p12_path)
   end
 end

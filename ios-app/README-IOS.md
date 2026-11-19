@@ -17,7 +17,7 @@ Commands: `npm ci` · `npm run icons` · `npm run sync` (build `www/`, `npx cap 
 
 Store build vs GitHub Pages build: Pages ships `js/config.js` with `STORE: false` (Derek's jobs and the Lauder Rd seed preload). The iOS build sets `STORE: true`: the app starts empty and offers **Load sample job** (a public Houston location; its weather is fetched live, nothing invented), and shows privacy/support links.
 
-Secrets (repo Settings › Secrets and variables › Actions): `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_KEY` (full .p8 text), `APPLE_TEAM_ID`. See `/appstore/DEREK-STEPS.md` in the workspace for the Apple-side steps.
+Secrets (repo Settings › Secrets and variables › Actions): `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_KEY` (full .p8 text), `APPLE_TEAM_ID`, plus `DIST_CERT_P12_BASE64` / `DIST_CERT_P12_PASSWORD` (the ONE reusable Apple Distribution cert, id 3FZNU7Q5FT, imported into a temp keychain each run; CI never creates certs). Push a tag `ios-signcheck-N` to build+sign+export without uploading. `ios-app/signing/asc_signing_setup.py` is the one-off script that created that cert (its workflow was removed so it can't rerun). See `/appstore/DEREK-STEPS.md` in the workspace for the Apple-side steps.
 
 Info.plist: display name "Rain Out", `ITSAppUsesNonExemptEncryption = NO`, file sharing on (autobackup visible in Files), no location/camera/photo permission strings. Notifications permission is requested at runtime the first time a rain day is flagged.
 
