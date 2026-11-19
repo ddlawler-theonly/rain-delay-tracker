@@ -27,10 +27,12 @@ platform :ios do
     build_number = [latest.to_i + 1, ENV['GITHUB_RUN_NUMBER'].to_i].max
 
     auth = "-allowProvisioningUpdates -authenticationKeyPath #{key_path} -authenticationKeyID #{key_id} -authenticationKeyIssuerID #{issuer_id}"
+    # CODE_SIGN_IDENTITY 'Apple Distribution': archive straight to an App Store profile + cloud-managed distribution cert
+    # (the default 'Apple Development' profile needs a registered device, and this team has none).
     build_app(
       project: PROJECT, scheme: 'App', configuration: 'Release', clean: true,
       export_method: 'app-store', output_directory: File.join(ROOT, 'build'), output_name: 'RainDelay.ipa',
-      xcargs: "#{auth} DEVELOPMENT_TEAM=#{team_id} CODE_SIGN_STYLE=Automatic " \
+      xcargs: "#{auth} DEVELOPMENT_TEAM=#{team_id} CODE_SIGN_STYLE=Automatic CODE_SIGN_IDENTITY='Apple Distribution' " \
               "PRODUCT_BUNDLE_IDENTIFIER=#{CFG['bundleId']} MARKETING_VERSION=#{CFG['version']} CURRENT_PROJECT_VERSION=#{build_number}",
       export_xcargs: auth,
       export_options: { method: 'app-store', signingStyle: 'automatic', teamID: team_id, uploadSymbols: true, manageAppVersionAndBuildNumber: false }
