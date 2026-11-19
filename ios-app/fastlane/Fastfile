@@ -34,7 +34,7 @@ platform :ios do
       export_method: 'app-store', output_directory: File.join(ROOT, 'build'), output_name: 'RainDelay.ipa',
       xcargs: "#{auth} DEVELOPMENT_TEAM=#{team_id} CODE_SIGN_STYLE=Automatic CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO " \
               "PRODUCT_BUNDLE_IDENTIFIER=#{CFG['bundleId']} MARKETING_VERSION=#{CFG['version']} CURRENT_PROJECT_VERSION=#{build_number}",
-      export_xcargs: auth,
+      # (gym also passes xcargs, incl. the API-key auth, to -exportArchive; don't repeat it in export_xcargs)
       export_options: { method: 'app-store', signingStyle: 'automatic', teamID: team_id, uploadSymbols: true, manageAppVersionAndBuildNumber: false }
     )
 
