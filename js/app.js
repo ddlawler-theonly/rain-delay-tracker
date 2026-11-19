@@ -7,27 +7,31 @@ const DOW = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sa
 
 const VERSION = CONFIG.VERSION;
 const KEY = 'rdt.v1';
-const TZ = 'America/Chicago';
+const TZ = 'America/Chicago'; // default site zone (all pre-1.4 jobs are Texas)
 const MPH_PER_KT = 1.150779;
 const IEM_SOURCE = 'IEM ASOS daily summary';
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-// ---------- dates (all calendar dates are America/Chicago) ----------
-function chicagoToday() {
-  const p = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-  return p; // YYYY-MM-DD
+// ---------- dates (each job's calendar days are in its weather station's local time zone) ----------
+function todayIn(tz) {
+  try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz || TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); }
+  catch { return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); }
 }
+function chicagoToday() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; } // device-local date: file names / backups only (name kept for tests)
+function jobTZ(j) { return stationById(j?.station)?.tz || TZ; }
+function jobToday(j) { return todayIn(jobTZ(j)); }
 function addDays(iso, n) { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
 function dayRange(a, b) { const out = []; for (let d = a; d <= b; d = addDays(d, 1)) out.push(d); return out; }
 function wkday(iso) { return new Date(iso + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }); }
 function fmtDate(iso) { return new Date(iso + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }); }
 function fmtShort(iso) { if (!iso) return '—'; return new Date(iso + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }); }
 function monthName(ym) { return new Date(ym + '-15T12:00:00Z').toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }); }
-function nowChicago() { return new Date().toLocaleString('en-US', { timeZone: TZ, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' CT'; }
+function nowChicago() { return new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }); } // device local time with zone label
 
 // ---------- stations ----------
-const ST = STATIONS.map(([id, name, lat, lon, p]) => ({ id, name, lat, lon, precip: !!p }));
+const ST = STATIONS.map(([id, name, lat, lon, p, st, tz]) => ({ id, name, lat, lon, precip: !!p, st: st || 'TX', tz: tz || TZ }));
+const ST_BY_ID = new Map(ST.map((s) => [s.id, s]));
 function icao(id) { return /^[A-Z]{3}$/.test(id) ? 'K' + id : id; }
 function miles(aLat, aLon, bLat, bLon) {
   const R = 3958.8, t = Math.PI / 180, dLat = (bLat - aLat) * t, dLon = (bLon - aLon) * t;
@@ -35,7 +39,7 @@ function miles(aLat, aLon, bLat, bLon) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 function nearest(lat, lon, n = 8, all = false) { return ST.filter((s) => all || s.precip).map((s) => ({ ...s, mi: miles(lat, lon, s.lat, s.lon) })).sort((a, b) => a.mi - b.mi).slice(0, n); }
-function stationById(id) { return ST.find((s) => s.id === id); }
+function stationById(id) { return ST_BY_ID.get(id); }
 
 // ---------- storage ----------
 let S = load();
@@ -104,7 +108,7 @@ const job = (id) => S.jobs.find((j) => j.id === id);
 // ---------- rules ----------
 function analyze(j) {
   if (!j.start) return [];
-  const today = chicagoToday();
+  const today = jobToday(j);
   const last = j.end && j.end < addDays(today, -1) ? j.end : addDays(today, -1);
   const dates = j.start <= last ? dayRange(j.start, last) : [];
   const rows = [];
@@ -153,7 +157,8 @@ const CREW = { worked: 'Worked', partial: 'Partial', rained_out: 'Rained out' };
 let lastIEM = 0;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function fetchIEM(stationId, sts, ets) {
-  const u = `https://mesonet.agron.iastate.edu/cgi-bin/request/daily.py?network=TX_ASOS&stations=${encodeURIComponent(stationId)}&sts=${sts}&ets=${ets}&format=csv`;
+  const net = (stationById(stationId)?.st || 'TX') + '_ASOS';
+  const u = `https://mesonet.agron.iastate.edu/cgi-bin/request/daily.py?network=${net}&stations=${encodeURIComponent(stationId)}&sts=${sts}&ets=${ets}&format=csv`;
   let res;
   for (const backoff of [0, 5000, 10000, 20000]) {
     if (backoff) await sleep(backoff);
@@ -186,7 +191,7 @@ async function fetchIEM(stationId, sts, ets) {
 let busy = false, rerun = false;
 async function refreshJob(j, { force = false } = {}) {
   if (!j.start) return { added: 0, missing: 0, skipped: true };
-  const today = chicagoToday();
+  const today = jobToday(j);
   const yest = addDays(today, -1);
   const last = j.end && j.end < yest ? j.end : yest;
   if (j.start > last) return { added: 0, missing: 0, note: 'Job has not started yet.' };
@@ -220,7 +225,7 @@ async function refreshJob(j, { force = false } = {}) {
   return { added, missing };
 }
 async function fetchForecast(j) {
-  const today = chicagoToday();
+  const today = jobToday(j);
   try {
     const p = await (await fetch(`https://api.weather.gov/points/${j.lat.toFixed(4)},${j.lon.toFixed(4)}`, { headers: { Accept: 'application/geo+json' } })).json();
     const fu = p?.properties?.forecast; if (!fu) throw new Error('no forecast url');
@@ -244,7 +249,7 @@ async function refreshAll(force = false) {
       const before = new Set(analyze(j).filter((r) => r.rain).map((r) => r.date));
       const r = await refreshJob(j, { force });
       await fetchForecast(j);
-      const fresh = analyze(j).filter((x) => x.rain && !before.has(x.date) && x.date >= addDays(chicagoToday(), -3));
+      const fresh = analyze(j).filter((x) => x.rain && !before.has(x.date) && x.date >= addDays(jobToday(j), -3));
       if (fresh.length && N()?.notify) N().notify(`Rain day flagged: ${j.name}`, fresh.map((x) => `${fmtShort(x.date)} ${x.d.precip.toFixed(2)} in`).join(', ') + ` at ${icao(j.station)}`);
       if (r.added || r.missing) msg.push(`${j.name}: ${r.added} day(s) updated${r.missing ? `, ${r.missing} missing` : ''}`);
     } catch (e) { err.push(`${j.name}: ${e.message}`); }
@@ -339,7 +344,7 @@ function viewHome() {
     <div class="stat"><b>${tot.pend}</b><span>Wet-outs to confirm</span></div></div>
     <div class="row"><button id="lcsv">Export list CSV</button><button id="lxlsx">Export list Excel</button></div></div>`;
   const list = inView.map((j) => {
-    const rows = analyze(j), s = summarize(j, rows), f = j.forecast?.[today];
+    const rows = analyze(j), s = summarize(j, rows), f = j.forecast?.[jobToday(j)];
     const lastDay = [...rows].reverse().find((r) => r.has);
     const noStart = !j.start;
     return `<div class="card"><a class="job" href="#/job/${j.id}"><h2>${esc(j.name)}</h2>${j.approx ? `<span class="pill appx">${j.locNote && j.locNote.startsWith('LOCATION UNKNOWN') ? 'Location unknown - add address' : 'Approximate - confirm address'}</span>` : ''}
@@ -376,7 +381,7 @@ function viewEdit(j) {
     <label for="name">Job name</label><input id="name" required value="${esc(v.name)}" placeholder="e.g. Riverside Phase 2">
     <label for="number">Job number</label><input id="number" value="${esc(v.number)}">
     <label for="listId">List</label><select id="listId">${S.lists.map((l) => `<option value="${l.id}" ${(v.listId || (S.activeList !== 'all' ? S.activeList : S.defaultList)) === l.id ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}<option value="__new">＋ New list…</option></select>
-    <label for="address">Jobsite address</label><input id="address" value="${esc(v.address)}" placeholder="Street, City, TX ZIP">
+    <label for="address">Jobsite address</label><input id="address" value="${esc(v.address)}" placeholder="Street, City, ST ZIP">
     <div class="row" style="margin-top:8px"><button type="button" id="geo">Find lat/lon from address</button><span id="geomsg" class="mute small"></span></div>
     <div class="grid2"><div><label for="lat">Latitude</label><input id="lat" inputmode="decimal" value="${esc(v.lat)}" placeholder="29.9303"></div>
     <div><label for="lon">Longitude</label><input id="lon" inputmode="decimal" value="${esc(v.lon)}" placeholder="-95.3486"></div></div>
@@ -400,14 +405,16 @@ function viewEdit(j) {
   let auto = v.stationAuto !== false;
   function fillStations() {
     const lat = parseFloat($('#lat').value), lon = parseFloat($('#lon').value);
-    if (!isFinite(lat) || !isFinite(lon)) { sel.innerHTML = ST.map((s) => `<option value="${s.id}">${icao(s.id)} - ${esc(s.name)}</option>`).join(''); if (v.station) sel.value = v.station; return; }
+    if (!isFinite(lat) || !isFinite(lon)) { sel.innerHTML = ST.map((s) => `<option value="${s.id}">${s.st} · ${icao(s.id)} - ${esc(s.name)}</option>`).join(''); if (v.station) sel.value = v.station; return; }
     const near = nearest(lat, lon, 10);
     const tag = (s) => (s.precip ? '' : ' - no rain gauge data');
     const cur = sel.value || v.station;
     sel.innerHTML = `<optgroup label="Nearest with rain data">${near.map((s) => `<option value="${s.id}">${icao(s.id)} - ${esc(s.name)} (${s.mi.toFixed(2)} mi)</option>`).join('')}</optgroup>
-      <optgroup label="All Texas ASOS">${ST.map((s) => `<option value="${s.id}">${icao(s.id)} - ${esc(s.name)} (${miles(lat, lon, s.lat, s.lon).toFixed(1)} mi)${tag(s)}</option>`).join('')}</optgroup>`;
+      <optgroup label="More stations (nearest 60)">${nearest(lat, lon, 60, true).map((s) => `<option value="${s.id}">${icao(s.id)} - ${esc(s.name)}, ${s.st} (${s.mi.toFixed(1)} mi)${tag(s)}</option>`).join('')}</optgroup>`;
+    if (cur && !sel.querySelector(`option[value="${cur}"]`) && stationById(cur)) { const s = stationById(cur); sel.insertAdjacentHTML('beforeend', `<option value="${s.id}">${icao(s.id)} - ${esc(s.name)}, ${s.st} (${miles(lat, lon, s.lat, s.lon).toFixed(1)} mi)</option>`); }
     sel.value = auto || !cur ? near[0].id : cur;
-    $('#stmsg').textContent = auto ? `Auto: nearest is ${icao(near[0].id)}, ${near[0].mi.toFixed(2)} mi. Pick another to override.` : 'Station set by you.';
+    const far = near[0].mi > 30 ? ` Note: the nearest station with rain data is ${near[0].mi.toFixed(0)} mi away, so site rainfall may differ.` : '';
+    $('#stmsg').textContent = (auto ? `Auto: nearest is ${icao(near[0].id)}, ${near[0].mi.toFixed(2)} mi. Pick another to override.` : 'Station set by you.') + far;
   }
   fillStations();
   const setDows = (list) => app.querySelectorAll('.dow').forEach((b) => { const on = list.includes(+b.dataset.dow); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
@@ -461,11 +468,11 @@ function viewEdit(j) {
 }
 
 function viewJob(j, tab) {
-  const rows = analyze(j), s = summarize(j, rows), today = chicagoToday(), f = j.forecast?.[today];
+  const rows = analyze(j), s = summarize(j, rows), today = jobToday(j), f = j.forecast?.[today];
   const filt = sessionStorage.getItem('rdt.filter') || 'flagged';
   const tabs = ['log', 'summary', 'export'].map((t) => `<button class="${t === tab ? 'on' : ''}" data-tab="${t}">${{ log: 'Daily log', summary: 'Summary', export: 'Export' }[t]}</button>`).join('');
   let body = `<div class="card"><div class="mute small">${esc(j.number ? j.number + ' · ' : '')}${esc(j.address)}</div>
-    <div class="mute small">Station ${esc(icao(j.station))} ${esc(stationById(j.station)?.name || '')}, ${j.stationMi?.toFixed(2)} mi${j.stationAuto ? ' (nearest)' : ' (chosen)'} · NTP ${fmtShort(j.start)} → ${fmtShort(j.end)} · ≥ ${j.threshold.toFixed(2)} in${j.wetOut ? ' + wet-out' : ''} · Work days: ${workLabel(j)}</div>
+    <div class="mute small">Station ${esc(icao(j.station))} ${esc(stationById(j.station)?.name || '')}, ${j.stationMi?.toFixed(2)} mi${j.stationAuto ? ' (nearest)' : ' (chosen)'} · NTP ${fmtShort(j.start)} → ${fmtShort(j.end)} · ≥ ${j.threshold.toFixed(2)} in${j.wetOut ? ' + wet-out' : ''} · Work days: ${workLabel(j)} · Days in ${esc(jobTZ(j))} time</div>
     <div class="stats"><div class="stat"><b>${s.counted}</b><span>Counted weather days</span></div><div class="stat"><b>${s.rain}</b><span>Days ≥ ${j.threshold.toFixed(2)} in</span></div>
     <div class="stat"><b>${s.wetConf}/${s.wetConf + s.wetPend + s.wetRej}</b><span>Wet-out confirmed</span></div><div class="stat"><b>${s.total.toFixed(2)}″</b><span>Total rain</span></div></div>
     <div class="small">Today (${fmtShort(today)}): ${f ? `<b>${f.pop}% chance of rain</b> <span class="mute">- ${esc(f.periods)} (NWS ${esc(f.office)})</span>` : '<span class="mute">forecast not loaded</span>'}</div>
@@ -497,7 +504,7 @@ function viewJob(j, tab) {
       <tr><td>Total rain</td><td class="n">${s.total.toFixed(2)} in</td></tr>
       <tr><td>Missing days (no data)</td><td class="n">${s.missing}</td></tr></tbody></table></div>
       <div class="card"><h2>By month vs normal</h2><div style="overflow-x:auto"><table><thead><tr><th>Month</th><th class="n">Rain in</th><th class="n">Normal in</th><th class="n">Days ≥ ${j.threshold.toFixed(2)}</th><th class="n">Normal days ≥ 0.50</th><th class="n">Counted</th><th class="n">Off days</th><th class="n">Missing</th></tr></thead><tbody>${mrows}</tbody></table></div>
-      <p class="mute small">${N ? `Normals: NCEI 1991-2020 monthly normals, ${esc(N.ncei)} (${esc(icao(j.station))}); normal days count ≥ 0.50 in regardless of your threshold. Partial months are compared to full-month normals.` : 'No embedded NCEI normals for this station.'}</p></div>`;
+      <p class="mute small">${N ? `Normals: NCEI 1991-2020 monthly normals, ${esc(N.ncei)} (${esc(icao(j.station))}); normal days count ≥ 0.50 in regardless of your threshold. Partial months are compared to full-month normals.` : 'No NCEI 1991-2020 normals are available for this station, so the normal columns are left blank (never estimated).'}</p></div>`;
   } else {
     body += `<div class="card"><h2>Export ${esc(j.name)}</h2><p class="mute small">Weather days list each date with amount, source, station, wet-out status, crew status, and notes.</p>
       <div class="row"><button id="xcsv">CSV</button><button id="xxlsx">Excel (.xlsx)</button><button id="xpdf">PDF</button><button id="xprint">Print view</button></div></div>`;
@@ -552,7 +559,7 @@ function exportCSV(j) {
 }
 function headerLines(j) {
   const s = summarize(j, analyze(j));
-  return [[`${j.name}${j.number ? ' (' + j.number + ')' : ''}`], [j.address], [`Station: ${icao(j.station)} ${stationById(j.station)?.name || ''}, ${j.stationMi?.toFixed(2)} mi from site`],
+  return [[`${j.name}${j.number ? ' (' + j.number + ')' : ''}`], [j.address], [`Station: ${icao(j.station)} ${stationById(j.station)?.name || ''} (${stationById(j.station)?.st || ''}_ASOS), ${j.stationMi?.toFixed(2)} mi from site; calendar days in ${jobTZ(j)} local time`],
     [`NTP ${j.start} - completion ${j.end}; rule: >= ${j.threshold.toFixed(2)} in${j.wetOut ? ' plus next work day if wet out (confirmed)' : ''}; work days: ${workLabel(j)} (off days shown, never counted)`],
     [`Counted weather days: ${s.counted} (rain days ${s.rain}, wet-out confirmed ${s.wetConf}, pending ${s.wetPend}); total rain ${s.total.toFixed(2)} in; missing days ${s.missing}`],
     [`Generated ${nowChicago()} by Rain Out. Sources: NWS CLI (official daily climate report) where labeled; otherwise IEM ASOS daily summary (may differ slightly from NWS CLI). Missing days are not estimated.`]];
@@ -596,4 +603,4 @@ if (!window.Capacitor?.isNativePlatform?.() && 'serviceWorker' in navigator && l
 refreshAll(false);
 window.addEventListener('online', () => refreshAll(false));
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && (!S.lastRun || Date.now() - Date.parse(S.lastRun) > 3 * 3600e3)) refreshAll(false); });
-window.__rdt = { get state() { return S; }, analyze, summarize, chicagoToday };
+window.__rdt = { get state() { return S; }, analyze, summarize, chicagoToday, jobToday, jobTZ, stationById };
