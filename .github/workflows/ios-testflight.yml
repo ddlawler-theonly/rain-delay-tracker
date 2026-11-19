@@ -1,6 +1,6 @@
 name: ios-testflight
-# Builds ios-app/ (App Store build: starts empty, no preloaded job sites) and uploads to TestFlight.
-# Trigger: push a tag like ios-v1.0.0 (works from the gh-pages branch). Needs the 4 repository secrets in ios-app/README-IOS.md.
+# Builds ios-app/ (App Store build: starts empty, no preloaded job sites) and uploads to TestFlight ONLY (never submits for App Store review).
+# Trigger: Actions › ios-testflight › Run workflow, or push a tag like ios-v1.0. Needs the 4 repository secrets in ios-app/README-IOS.md.
 on:
   workflow_dispatch:
     inputs:
