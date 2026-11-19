@@ -1,0 +1,22 @@
+name: ios-signing-setup
+# One-off: revoke the unused distribution cert, create ONE reusable Apple Distribution cert from ios-app/signing/dist.csr,
+# recreate the App Store profile. Uploads only public data (cert ids + public cert). Trigger: push a tag signing-setup-*.
+on:
+  push:
+    tags: ['signing-setup-*']
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults: { run: { working-directory: ios-app/signing } }
+    env:
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -q pyjwt cryptography requests
+      - run: python asc_signing_setup.py
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: signing-setup-out, path: ios-app/signing/out/, retention-days: 3 }
