@@ -1,6 +1,7 @@
 // Rain Out - static, offline-capable. All data lives in this browser (localStorage).
 import { STATIONS, SEED_DAYS, SEED_JOB, NORMALS, PRESET_JOBS } from './data.js';
 import { CONFIG } from './config.js';
+import { PRO, PRO_IDS, FREE_JOBS, FREE_LISTS, countedJobs, isProActive, gate as gateRule, REASON_TEXT, periodLabel } from './pro.js';
 const N = () => window.RDNative; // native bridge (iOS app only)
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 const DOW = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [0, 'Sun']];
@@ -87,6 +88,21 @@ function migrate() {
 }
 migrate();
 save();
+
+// ---------- Rain Out Pro (App Store build only; StoreKit 2 via window.RDNative.iap, no server) ----------
+const PRO_CACHE = 'rdt.pro'; // last known entitlement, so the UI doesn't flash before StoreKit answers (StoreKit is the authority)
+let proState = (() => { try { return JSON.parse(localStorage.getItem(PRO_CACHE)) || { ents: [] }; } catch { return { ents: [] }; } })();
+let proProducts = null, proBusy = false;
+const proOn = () => !CONFIG.STORE || isProActive(proState.ents);
+const gate = (action) => gateRule(action, { store: CONFIG.STORE, pro: proOn(), jobs: S.jobs, lists: S.lists });
+function setEnts(ents) { proState = { ents: ents || [], checked: new Date().toISOString() }; try { localStorage.setItem(PRO_CACHE, JSON.stringify(proState)); } catch {} }
+async function initPro() {
+  const iap = N()?.iap; if (!CONFIG.STORE || !iap) return;
+  iap.onChange?.((ents) => { setEnts(ents); render(); });
+  try { setEnts(await iap.entitlements()); } catch (e) { console.warn('entitlements', e); }
+  render();
+}
+function requirePro(action) { const g = gate(action); if (!g.ok) location.hash = '#/pro/' + g.reason; return g.ok; }
 const listName = (id) => (id === 'all' ? 'All jobs' : S.lists.find((l) => l.id === id)?.name || '?');
 const jobsInView = () => (S.activeList === 'all' ? S.jobs : S.jobs.filter((j) => j.listId === S.activeList));
 function newList(name) {
@@ -286,7 +302,7 @@ function shell(title, body, back, listPicker) {
   document.onclick = lm ? (e) => { if (!lm.hidden && !lm.contains(e.target)) { lm.hidden = true; lb.setAttribute('aria-expanded', false); } } : null;
   if (lm) lm.querySelectorAll('[data-list]').forEach((b) => (b.onclick = () => pickList(b.dataset.list)));
   function pickList(v) {
-    if (v === '__new') { const id = newList(prompt('Name for the new list (e.g. Midland, Completed):')); if (id) { S.activeList = id; save(); toast('List created'); } render(); return; }
+    if (v === '__new') { if (!requirePro('addList')) return; const id = newList(prompt('Name for the new list (e.g. Midland, Completed):')); if (id) { S.activeList = id; save(); toast('List created'); } render(); return; }
     if (v === '__manage') { location.hash = '#/lists'; return; }
     S.activeList = v; save(); render();
   }
@@ -294,7 +310,8 @@ function shell(title, body, back, listPicker) {
 function render() {
   const h = location.hash || '#/';
   const m = h.match(/^#\/(job|edit)\/([^/]+)(?:\/(\w+))?/);
-  if (h === '#/new') return viewEdit(null);
+  if (h === '#/new') { if (!gate('addJob').ok) return viewPro('jobs'); return viewEdit(null); }
+  if (h.startsWith('#/pro')) return viewPro(h.split('/')[2] || '');
   if (h === '#/lists') return viewLists();
   if (m && m[1] === 'edit') return viewEdit(job(m[2]));
   if (m && m[1] === 'job' && job(m[2])) return viewJob(job(m[2]), m[3] || 'log');
@@ -315,7 +332,7 @@ function viewLists() {
     for (const j of S.jobs) if (j.listId === l.id) j.listId = S.defaultList;
     S.lists = S.lists.filter((x) => x.id !== l.id); if (S.activeList === l.id) S.activeList = S.defaultList; save(); toast('List deleted'); render();
   }));
-  $('#addl').onclick = () => { const id = newList($('#nl').value); if (id) { save(); toast('List added'); render(); } };
+  $('#addl').onclick = () => { if (!requirePro('addList')) return; const id = newList($('#nl').value); if (id) { save(); toast('List added'); render(); } };
 }
 function exportListCSV() {
   const jobs = jobsInView().filter((j) => j.start); if (!jobs.length) return alert('No jobs with a start date in this list.');
@@ -362,8 +379,9 @@ function viewHome() {
     <div class="row" style="margin-top:8px"><a class="btn grow" href="#/lists">Manage lists</a></div>
     <div class="card" style="margin-top:12px"><h2>Backup</h2><p class="mute small">Jobs are saved only in this browser on this device. Export a backup now and then.</p>
       <div class="row"><button id="bk">Download backup (JSON)</button><label class="btn" style="margin:0;font-weight:400">Restore backup<input type="file" id="rs" accept="application/json,.json" hidden></label></div></div>
-    ${CONFIG.STORE ? '<p class="small"><a href="privacy.html">Privacy policy</a> · <a href="support.html">Support</a></p>' : ''}<p class="mute small">Backups include all lists and jobs. Weather: Iowa Environmental Mesonet ASOS daily summaries (may differ slightly from official NWS CLI).${SEED_JOB ? " Seed job history (Sep 1-Nov 16) is NWS CLI KIAH." : ""} Forecast: api.weather.gov. Normals: NCEI 1991-2020. v${VERSION}</p>`, null, true);
-  $('#lcsv').onclick = exportListCSV; $('#lxlsx').onclick = exportListXLSX;
+    ${CONFIG.STORE ? `<div class="card pro-card"><div class="row"><div class="grow"><b>${proOn() ? 'Rain Out Pro is active' : 'Rain Out Free'}</b><div class="mute small">${proOn() ? 'Unlimited jobs and project lists.' : `${Math.min(countedJobs(S.jobs), FREE_JOBS)} of ${FREE_JOBS} free jobs used (the sample job doesn’t count).`}</div></div><a class="btn${proOn() ? '' : ' primary'}" href="#/pro" id="proBtn">${proOn() ? 'Manage' : 'Get Pro'}</a></div></div>` : ''}
+    ${CONFIG.STORE ? '<p class="small"><a href="privacy.html">Privacy policy</a> · <a href="support.html">Support</a> · <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/">Terms of Use (EULA)</a></p>' : ''}<p class="mute small">Backups include all lists and jobs. Weather: Iowa Environmental Mesonet ASOS daily summaries (may differ slightly from official NWS CLI).${SEED_JOB ? " Seed job history (Sep 1-Nov 16) is NWS CLI KIAH." : ""} Forecast: api.weather.gov. Normals: NCEI 1991-2020. v${VERSION}</p>`, null, true);
+  $('#lcsv').onclick = () => requirePro('listExport') && exportListCSV(); $('#lxlsx').onclick = () => requirePro('listExport') && exportListXLSX();
   if ($('#sample')) $('#sample').onclick = () => { S.jobs.push({ ...sampleJob(), listId: S.activeList !== 'all' ? S.activeList : S.defaultList }); save(); refreshAll(false); };
   $('#bk').onclick = () => download(`rain-out-backup-${chicagoToday()}.json`, new Blob([JSON.stringify(S, null, 1)], { type: 'application/json' }));
   $('#rs').onchange = async (e) => {
@@ -374,6 +392,39 @@ function viewHome() {
   };
 }
 
+function viewPro(reason) {
+  if (!CONFIG.STORE) { location.hash = '#/'; return; }
+  const iap = N()?.iap, on = proOn();
+  const ents = (proState.ents || []).filter((e) => PRO_IDS.includes(e.productId));
+  const prod = (id) => proProducts?.find((p) => p.id === id);
+  const plan = (id, tag) => { const p = prod(id); return p ? `<button class="plan${id === PRO.yearly ? ' primary' : ''}" data-buy="${esc(id)}" ${proBusy || on ? 'disabled' : ''}><b>${esc(p.displayName || (id === PRO.yearly ? 'Yearly' : 'Monthly'))}</b><span>${esc(p.displayPrice)} / ${esc(periodLabel(p.period))}${tag ? ` · ${tag}` : ''}</span></button>` : ''; };
+  const y = prod(PRO.yearly), m = prod(PRO.monthly);
+  const save = y && m && y.price > 0 && m.price > 0 ? Math.round((1 - y.price / (m.price * 12)) * 100) : 0;
+  const status = on ? `<div class="banner ok">Rain Out Pro is active${ents[0] ? ` (${ents[0].productId === PRO.yearly ? 'yearly' : 'monthly'}${ents[0].expires ? `, renews or ends ${new Date(ents[0].expires).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''})` : ''}. Thank you!</div>` : '';
+  const plans = !iap ? '<p class="mute">Purchases are available in the Rain Out iPhone app.</p>'
+    : proProducts === null ? '<p class="mute" id="plmsg">Loading prices from the App Store…</p>'
+    : (y || m) ? `<div class="plans">${plan(PRO.yearly, save > 0 ? `save ${save}%` : '')}${plan(PRO.monthly)}</div>` : '<p class="mute">Prices are not available right now. Check your internet connection and try again.</p>';
+  shell('Rain Out Pro', `${status}<div class="card paywall">
+    <h2>Rain Out Pro</h2>${reason && REASON_TEXT[reason] && !on ? `<p>${esc(REASON_TEXT[reason])}</p>` : ''}
+    <ul class="incl"><li><b>Unlimited jobs</b> (free: ${FREE_JOBS})</li><li><b>Unlimited project lists</b> with the list menu (free: ${FREE_LISTS})</li><li><b>Export a whole list</b> to CSV or Excel at once</li></ul>
+    <p class="mute small">Free always includes full daily rain logs, wet-out tracking, work days, maps, summaries, and CSV / Excel / PDF exports for each job. If a subscription ends, nothing is deleted or locked: every job stays viewable, editable, and exportable; you just can't add more than the free limit.</p>
+    ${plans}
+    <p class="small legal">Rain Out Pro is an auto-renewable subscription${y ? `: ${esc(y.displayPrice)} per year` : ''}${m ? `${y ? ' or' : ':'} ${esc(m.displayPrice)} per month` : ''}. Payment is charged to your Apple Account when you confirm the purchase. The subscription renews automatically for the same period and price unless it is canceled at least 24 hours before the end of the current period; your account is charged for the renewal within 24 hours before the current period ends. You can manage or cancel it any time in Settings › your name › Subscriptions.</p>
+    <div class="row">${iap ? `<button id="restore" ${proBusy ? 'disabled' : ''}>Restore Purchases</button>` : ''}${iap && on ? '<button id="manage">Manage subscription</button>' : ''}</div>
+    <p class="small"><a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/">Terms of Use (EULA)</a> · <a href="privacy.html">Privacy Policy</a></p>
+  </div>`, '#/');
+  if (!iap) return;
+  if (proProducts === null) iap.products(PRO_IDS).then((p) => { proProducts = p || []; if ((location.hash || '').startsWith('#/pro')) render(); }).catch(() => { proProducts = []; if ((location.hash || '').startsWith('#/pro')) render(); });
+  const busy = async (fn) => { proBusy = true; render(); try { await fn(); } catch (e) { alert(String(e?.message || e)); } finally { proBusy = false; render(); } };
+  app.querySelectorAll('[data-buy]').forEach((b) => (b.onclick = () => busy(async () => {
+    const r = await iap.purchase(b.dataset.buy);
+    if (r?.entitlements) setEnts(r.entitlements);
+    if (r?.status === 'purchased' && proOn()) { toast('Rain Out Pro is active'); N()?.tap?.(); }
+    else if (r?.status === 'pending') toast('Purchase pending approval');
+  })));
+  $('#restore') && ($('#restore').onclick = () => busy(async () => { setEnts(await iap.restore()); toast(proOn() ? 'Purchases restored. Rain Out Pro is active.' : 'No active Rain Out Pro subscription was found for this Apple Account.'); }));
+  $('#manage') && ($('#manage').onclick = () => iap.manage().catch((e) => alert(String(e?.message || e))));
+}
 function viewEdit(j) {
   const isNew = !j;
   const v = j || { name: '', number: '', address: '', lat: '', lon: '', start: '', end: '', threshold: 0.5, wetOut: true, station: '', stationAuto: true, notes: '' };
@@ -454,7 +505,8 @@ function viewEdit(j) {
     const workDays = [...app.querySelectorAll('.dow.on')].map((b) => +b.dataset.dow).sort();
     if (!workDays.length) return alert('Pick at least one work day.');
     let listId = $('#listId').value;
-    if (listId === '__new') { listId = newList(prompt('Name for the new list:')) || S.defaultList; }
+    if (listId === '__new') { if (!gate('addList').ok) { location.hash = '#/pro/lists'; return; } listId = newList(prompt('Name for the new list:')) || S.defaultList; }
+    if (isNew && !gate('addJob').ok) { location.hash = '#/pro/jobs'; return; }
     const data = { listId, workDays, name: $('#name').value.trim(), number: $('#number').value.trim(), address: $('#address').value.trim(), lat, lon, start, end, threshold: thr, wetOut: $('#wetOut').checked,
       station: sid, stationMi: +miles(lat, lon, s.lat, s.lon).toFixed(2), stationAuto: auto, notes: $('#notes').value, area: area || null };
     const moved = j && (Math.abs(j.lat - lat) > 1e-6 || Math.abs(j.lon - lon) > 1e-6);
@@ -598,9 +650,10 @@ function printView(j) {
 
 // ---------- boot ----------
 render();
+initPro();
 N()?.hideSplash?.();
 if (!window.Capacitor?.isNativePlatform?.() && 'serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('./sw.js').catch(() => {});
 refreshAll(false);
 window.addEventListener('online', () => refreshAll(false));
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && (!S.lastRun || Date.now() - Date.parse(S.lastRun) > 3 * 3600e3)) refreshAll(false); });
-window.__rdt = { get state() { return S; }, analyze, summarize, chicagoToday, jobToday, jobTZ, stationById };
+window.__rdt = { get pro() { return proState; }, proOn, gate, get state() { return S; }, analyze, summarize, chicagoToday, jobToday, jobTZ, stationById };
