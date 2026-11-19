@@ -6,7 +6,7 @@ CFG  = JSON.parse(File.read(File.join(ROOT, 'raindelay.config.json')))
 PROJECT = File.join(ROOT, 'ios/App/App.xcodeproj')
 
 platform :ios do
-  desc 'Build, sign (automatic, App Store Connect API key) and upload to TestFlight'
+  desc 'Build, sign (manual cert + App Store profile via the App Store Connect API key) and upload to TestFlight. Never submits for review.'
   lane :beta do
     key_id    = ENV.fetch('APP_STORE_CONNECT_KEY_ID')
     issuer_id = ENV.fetch('APP_STORE_CONNECT_ISSUER_ID')
@@ -26,16 +26,27 @@ platform :ios do
     end
     build_number = [latest.to_i + 1, ENV['GITHUB_RUN_NUMBER'].to_i].max
 
-    auth = "-allowProvisioningUpdates -authenticationKeyPath #{key_path} -authenticationKeyID #{key_id} -authenticationKeyIssuerID #{issuer_id}"
-    # Archive UNSIGNED, then let the export step sign for App Store with Xcode cloud-managed distribution signing
-    # (automatic signing of the archive wants an "Apple Development" profile, which needs a registered device; this team has none).
+    auth = "-authenticationKeyPath #{key_path} -authenticationKeyID #{key_id} -authenticationKeyIssuerID #{issuer_id}"
+
+    # Signing: manual, via the API key. Xcode cloud signing needs an Admin key ("Cloud signing permission error"),
+    # and automatic archive signing wants a Development profile, which needs a registered device (this team has none).
+    # get_certificates reuses a distribution cert only if its private key is in the keychain; on a fresh CI runner it
+    # creates one (Apple allows a few per team). get_provisioning_profile makes/refreshes the App Store profile for it.
+    keychain = File.expand_path('~/Library/Keychains/fastlane_tmp_keychain-db')
+    get_certificates(api_key: api_key, development: false, keychain_path: (ENV['CI'] ? keychain : nil), keychain_password: (ENV['CI'] ? '' : nil))
+    get_provisioning_profile(api_key: api_key, app_identifier: CFG['bundleId'], adhoc: false, development: false,
+                             cert_id: lane_context[SharedValues::CERT_CERTIFICATE_ID])
+    profile = lane_context[SharedValues::SIGH_NAME]
+    update_code_signing_settings(path: PROJECT, targets: ['App'], use_automatic_signing: false, team_id: team_id,
+                                 code_sign_identity: 'Apple Distribution', profile_name: profile, bundle_identifier: CFG['bundleId'])
+
     build_app(
       project: PROJECT, scheme: 'App', configuration: 'Release', clean: true,
       export_method: 'app-store', output_directory: File.join(ROOT, 'build'), output_name: 'RainDelay.ipa',
-      xcargs: "#{auth} DEVELOPMENT_TEAM=#{team_id} CODE_SIGN_STYLE=Automatic CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO " \
-              "PRODUCT_BUNDLE_IDENTIFIER=#{CFG['bundleId']} MARKETING_VERSION=#{CFG['version']} CURRENT_PROJECT_VERSION=#{build_number}",
-      # (gym also passes xcargs, incl. the API-key auth, to -exportArchive; don't repeat it in export_xcargs)
-      export_options: { method: 'app-store', signingStyle: 'automatic', teamID: team_id, uploadSymbols: true, manageAppVersionAndBuildNumber: false }
+      # (gym passes xcargs to -exportArchive too, so the auth flags appear only here)
+      xcargs: "#{auth} MARKETING_VERSION=#{CFG['version']} CURRENT_PROJECT_VERSION=#{build_number}",
+      export_options: { method: 'app-store', signingStyle: 'manual', teamID: team_id, uploadSymbols: true,
+                        manageAppVersionAndBuildNumber: false, provisioningProfiles: { CFG['bundleId'] => profile } }
     )
 
     upload_to_testflight(
