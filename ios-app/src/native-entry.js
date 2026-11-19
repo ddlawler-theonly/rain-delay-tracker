@@ -1,5 +1,5 @@
 // Bundled by esbuild into www/js/native.js (iOS build only). Exposes window.RDNative for js/app.js.
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Preferences } from '@capacitor/preferences';
@@ -14,6 +14,16 @@ const isNative = Capacitor.isNativePlatform();
 const blobToBase64 = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(r.error); r.readAsDataURL(blob); });
 const cancelled = (e) => /cancel/i.test(String(e?.message || e || ''));
 let backupTimer = null, pending = null, notifId = Date.now() % 100000;
+// Rain Out Pro: local StoreKit 2 plugin (plugins/rainout-storekit). On-device only, no server.
+const RainOutStore = registerPlugin('RainOutStore');
+const iap = isNative ? {
+  async products(ids) { return (await RainOutStore.getProducts({ ids })).products || []; },
+  async purchase(id) { return RainOutStore.purchase({ id }); },
+  async restore() { return (await RainOutStore.restore()).entitlements || []; },
+  async entitlements() { return (await RainOutStore.entitlements()).entitlements || []; },
+  async manage() { return RainOutStore.manageSubscriptions(); },
+  onChange(cb) { RainOutStore.addListener('entitlements', (e) => cb(e?.entitlements || [])); },
+} : null;
 
 window.RDNative = {
   isNative,
@@ -50,5 +60,6 @@ window.RDNative = {
   },
   hideSplash() { SplashScreen.hide({ fadeOutDuration: 200 }).catch(() => {}); },
   tap() { Haptics.impact({ style: ImpactStyle.Light }).catch(() => {}); },
+  iap,
 };
 if (isNative) StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
