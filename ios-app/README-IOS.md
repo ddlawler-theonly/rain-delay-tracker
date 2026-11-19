@@ -21,8 +21,8 @@ Secrets (repo Settings › Secrets and variables › Actions): `APP_STORE_CONNEC
 
 Info.plist: display name "Rain Out", `ITSAppUsesNonExemptEncryption = NO`, file sharing on (autobackup visible in Files), no location/camera/photo permission strings. Notifications permission is requested at runtime the first time a rain day is flagged.
 
-## Rain Out Pro (in-app subscriptions, StoreKit 2, no server)
+## Rain Out Personal / Unlimited (in-app subscriptions, StoreKit 2, no server)
 - Plugin: `plugins/rainout-storekit` (local npm package, Swift, ~170 lines). JS name `RainOutStore`; wrapped as `window.RDNative.iap` in `src/native-entry.js`. Methods: getProducts, purchase, restore (AppStore.sync), entitlements (Transaction.currentEntitlements), manageSubscriptions. A Transaction.updates listener finishes renewals/refunds and emits `entitlements`.
-- Products (group "Rain Out Pro"): `com.blueworksfieldpro.raindelay.pro.monthly`, `com.blueworksfieldpro.raindelay.pro.yearly`. Gating rules: `js/pro.js` (tests: `test/pro.test.mjs`). Gating applies only when `CONFIG.STORE` is true; the web version is unrestricted.
+- Products (group "Rain Out Pro"): Unlimited (level 1) `com.blueworksfieldpro.raindelay.unlimited.monthly` / `.unlimited.yearly`; Personal (level 2) `com.blueworksfieldpro.raindelay.personal.monthly` / `.personal.yearly`. Job limits only: Free 1, Personal 15, Unlimited no limit (no device or user limits). Gating rules: `js/pro.js` (tests: `test/pro.test.mjs`). Gating applies only when `CONFIG.STORE` is true; the web version is unrestricted.
 - Local testing: `ios/App/RainOut.storekit`, already selected in the shared App scheme (Run › Options › StoreKit Configuration).
 - CI: `.github/workflows/ios-build-check.yml` compiles the app for the simulator, unsigned. It never signs, uploads, or tags.

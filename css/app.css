@@ -105,3 +105,11 @@ td.n,th.n{text-align:right}
 .plans .plan span{font-size:15px}
 .paywall .legal{color:#555;line-height:1.4}
 .pro-card .btn{white-space:nowrap}
+.paywall .tier{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:12px 0}
+.paywall .tier.on{border-color:var(--accent)}
+.paywall .tier h3{margin:0 0 4px;font-size:18px}
+.paywall .tier .plans{margin:10px 0 2px}
+.plans .plan.current{opacity:.75}
+.paywall .tier .plans{grid-template-columns:1fr 1fr;gap:8px}
+.paywall .tier .plans .plan{padding:10px 12px}
+.paywall .tier .incl{margin:4px 0 6px}

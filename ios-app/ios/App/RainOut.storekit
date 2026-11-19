@@ -1,88 +1,116 @@
 {
-  "identifier" : "5C1B6E7A",
-  "nonRenewingSubscriptions" : [
-
-  ],
-  "products" : [
-
-  ],
-  "settings" : {
-    "_applicationInternalID" : "",
-    "_developerTeamID" : "",
-    "_failTransactionsEnabled" : false,
-    "_locale" : "en_US",
-    "_storefront" : "USA",
-    "_storeKitErrors" : [
-
-    ]
+  "identifier": "5C1B6E7A",
+  "nonRenewingSubscriptions": [],
+  "products": [],
+  "settings": {
+    "_applicationInternalID": "",
+    "_developerTeamID": "",
+    "_failTransactionsEnabled": false,
+    "_locale": "en_US",
+    "_storefront": "USA",
+    "_storeKitErrors": []
   },
-  "subscriptionGroups" : [
+  "subscriptionGroups": [
     {
-      "id" : "21000001",
-      "localizations" : [
+      "id": "21000001",
+      "localizations": [
         {
-          "description" : "Unlimited jobs and project lists",
-          "displayName" : "Rain Out Pro",
-          "locale" : "en_US"
+          "description": "Personal and Unlimited plans for Rain Out",
+          "displayName": "Rain Out Pro",
+          "locale": "en_US"
         }
       ],
-      "name" : "Rain Out Pro",
-      "subscriptions" : [
+      "name": "Rain Out Pro",
+      "subscriptions": [
         {
-          "adHocOffers" : [
-
-          ],
-          "codeOffers" : [
-
-          ],
-          "displayPrice" : "99.00",
-          "familyShareable" : false,
-          "groupNumber" : 1,
-          "internalID" : "21000002",
-          "introductoryOffer" : null,
-          "localizations" : [
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "150.00",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "21000011",
+          "introductoryOffer": null,
+          "localizations": [
             {
-              "description" : "Unlimited jobs, project lists and list exports",
-              "displayName" : "Rain Out Pro Yearly",
-              "locale" : "en_US"
+              "description": "Unlimited jobs and project lists",
+              "displayName": "Rain Out Unlimited Yearly",
+              "locale": "en_US"
             }
           ],
-          "productID" : "com.blueworksfieldpro.raindelay.pro.yearly",
-          "recurringSubscriptionPeriod" : "P1Y",
-          "referenceName" : "Rain Out Pro Yearly",
-          "subscriptionGroupID" : "21000001",
-          "type" : "RecurringSubscription"
+          "productID": "com.blueworksfieldpro.raindelay.unlimited.yearly",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "Rain Out Unlimited Yearly",
+          "subscriptionGroupID": "21000001",
+          "type": "RecurringSubscription"
         },
         {
-          "adHocOffers" : [
-
-          ],
-          "codeOffers" : [
-
-          ],
-          "displayPrice" : "12.99",
-          "familyShareable" : false,
-          "groupNumber" : 1,
-          "internalID" : "21000003",
-          "introductoryOffer" : null,
-          "localizations" : [
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "15.00",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "21000012",
+          "introductoryOffer": null,
+          "localizations": [
             {
-              "description" : "Unlimited jobs, project lists and list exports",
-              "displayName" : "Rain Out Pro Monthly",
-              "locale" : "en_US"
+              "description": "Unlimited jobs and project lists",
+              "displayName": "Rain Out Unlimited Monthly",
+              "locale": "en_US"
             }
           ],
-          "productID" : "com.blueworksfieldpro.raindelay.pro.monthly",
-          "recurringSubscriptionPeriod" : "P1M",
-          "referenceName" : "Rain Out Pro Monthly",
-          "subscriptionGroupID" : "21000001",
-          "type" : "RecurringSubscription"
+          "productID": "com.blueworksfieldpro.raindelay.unlimited.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Rain Out Unlimited Monthly",
+          "subscriptionGroupID": "21000001",
+          "type": "RecurringSubscription"
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "49.99",
+          "familyShareable": false,
+          "groupNumber": 2,
+          "internalID": "21000013",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Up to 15 jobs, unlimited project lists",
+              "displayName": "Rain Out Personal Yearly",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.blueworksfieldpro.raindelay.personal.yearly",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "Rain Out Personal Yearly",
+          "subscriptionGroupID": "21000001",
+          "type": "RecurringSubscription"
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "5.99",
+          "familyShareable": false,
+          "groupNumber": 2,
+          "internalID": "21000014",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Up to 15 jobs, unlimited project lists",
+              "displayName": "Rain Out Personal Monthly",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.blueworksfieldpro.raindelay.personal.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Rain Out Personal Monthly",
+          "subscriptionGroupID": "21000001",
+          "type": "RecurringSubscription"
         }
       ]
     }
   ],
-  "version" : {
-    "major" : 4,
-    "minor" : 0
+  "version": {
+    "major": 4,
+    "minor": 0
   }
 }
