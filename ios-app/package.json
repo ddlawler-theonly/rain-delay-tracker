@@ -19,7 +19,8 @@
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/share": "^8.0.3",
     "@capacitor/splash-screen": "^8.0.2",
-    "@capacitor/status-bar": "^8.0.4"
+    "@capacitor/status-bar": "^8.0.4",
+    "rainout-storekit": "file:plugins/rainout-storekit"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.6.2",
