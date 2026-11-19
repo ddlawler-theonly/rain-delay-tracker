@@ -20,3 +20,9 @@ Store build vs GitHub Pages build: Pages ships `js/config.js` with `STORE: false
 Secrets (repo Settings › Secrets and variables › Actions): `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_KEY` (full .p8 text), `APPLE_TEAM_ID`. See `/appstore/DEREK-STEPS.md` in the workspace for the Apple-side steps.
 
 Info.plist: display name "Rain Out", `ITSAppUsesNonExemptEncryption = NO`, file sharing on (autobackup visible in Files), no location/camera/photo permission strings. Notifications permission is requested at runtime the first time a rain day is flagged.
+
+## Rain Out Pro (in-app subscriptions, StoreKit 2, no server)
+- Plugin: `plugins/rainout-storekit` (local npm package, Swift, ~170 lines). JS name `RainOutStore`; wrapped as `window.RDNative.iap` in `src/native-entry.js`. Methods: getProducts, purchase, restore (AppStore.sync), entitlements (Transaction.currentEntitlements), manageSubscriptions. A Transaction.updates listener finishes renewals/refunds and emits `entitlements`.
+- Products (group "Rain Out Pro"): `com.blueworksfieldpro.raindelay.pro.monthly`, `com.blueworksfieldpro.raindelay.pro.yearly`. Gating rules: `js/pro.js` (tests: `test/pro.test.mjs`). Gating applies only when `CONFIG.STORE` is true; the web version is unrestricted.
+- Local testing: `ios/App/RainOut.storekit`, already selected in the shared App scheme (Run › Options › StoreKit Configuration).
+- CI: `.github/workflows/ios-build-check.yml` compiles the app for the simulator, unsigned. It never signs, uploads, or tags.

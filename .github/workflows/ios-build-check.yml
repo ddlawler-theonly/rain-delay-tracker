@@ -40,5 +40,7 @@ jobs:
             echo "::group::errors"; grep -nE "error:|fatal" build.log | head -80; echo "::endgroup::"
             tail -n 80 build.log; exit 1
           fi
+          grep -q "RainOutStoreKitPlugin.swift" build.log || { echo "::error::StoreKit plugin was not compiled"; exit 1; }
+          echo "StoreKit plugin compiled: $(grep -c "RainOutStoreKitPlugin" build.log) log lines"
           grep -nE "warning:.*RainOutStoreKit" build.log | head -40 || true
           tail -n 5 build.log
